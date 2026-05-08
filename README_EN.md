@@ -1,6 +1,10 @@
 # Formix User Guide
 
-For release notes, see [CHANGELOG.md](CHANGELOG.md).
+## Languages
+
+- Simplified Chinese: [README.md](README.md)
+- English: `README_EN.md`
+- Japanese: [README_JA.md](README_JA.md)
 
 ## 1. Overview
 
@@ -383,4 +387,3 @@ Main dependencies:
 ## 14. Document Notes
 
 - This document describes the current version of the app.
-- For version history, see [CHANGELOG.md](CHANGELOG.md).

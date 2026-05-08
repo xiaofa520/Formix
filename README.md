@@ -1,6 +1,10 @@
 # Formix 使用文档
 
-更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+## 文档语言
+
+- 简体中文：`README.md`
+- English: [README_EN.md](README_EN.md)
+- 日本語: [README_JA.md](README_JA.md)
 
 ## 一、软件简介
 
@@ -446,4 +450,3 @@ ffplay "input.mp4"
 ## 十四、文档说明
 
 - 本文档用于说明当前版本的主要使用方式。
-- 版本更新内容请查看 [CHANGELOG.md](CHANGELOG.md)。

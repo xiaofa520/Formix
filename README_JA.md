@@ -1,6 +1,10 @@
 # Formix 使用ガイド
 
-更新履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
+## 言語
+
+- 简体中文: [README.md](README.md)
+- English: [README_EN.md](README_EN.md)
+- 日本語: `README_JA.md`
 
 ## 1. 概要
 
@@ -383,4 +387,3 @@ ffplay "input.mp4"
 ## 14. ドキュメントについて
 
 - この文書は現在バージョンの使用方法を説明します。
-- バージョン履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
