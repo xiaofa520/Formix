@@ -6,6 +6,10 @@
 - English: [README_EN.md](README_EN.md)
 - 日本語: [README_JA.md](README_JA.md)
 
+## 相关文档
+
+- 命令行使用文档：[COMMAND_USAGE.md](COMMAND_USAGE.md)
+
 ## 一、软件简介
 
 Formix 是一个基于 FFmpeg 的桌面多媒体处理工具，当前包含以下主要功能：

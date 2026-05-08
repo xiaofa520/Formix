@@ -1319,6 +1319,27 @@ class BaseConverterPage(QWidget):
             colour, icon = self._kind_style(kind)
             self._append_log_row(ts, colour, icon, text)
 
+    def set_progress_state(self, text: str, kind: str = "progress"):
+        ts = datetime.now().strftime("%H:%M:%S")
+        safe = _html_mod.escape(text)
+        ts_col = "#A1A1AA" if getattr(self, "_is_dark", False) else "#52525B"
+        if kind == "success":
+            prog_col = "#6EE7B7" if getattr(self, "_is_dark", False) else "#15803D"
+            icon = "✔"
+        elif kind in {"warning", "warn"}:
+            prog_col = "#FCD34D" if getattr(self, "_is_dark", False) else "#B45309"
+            icon = "⚠"
+        elif kind == "error":
+            prog_col = "#FCA5A5" if getattr(self, "_is_dark", False) else "#B91C1C"
+            icon = "✖"
+        else:
+            prog_col = "#D97706" if getattr(self, "_is_dark", False) else "#92400E"
+            icon = "⟳"
+        self._progress_line.setText(
+            f'<span style="color:{ts_col};font-size:10px">[{ts}]</span>&nbsp;'
+            f'<span style="color:{prog_col};font-size:11px;font-weight:600">{icon}&nbsp;{safe}</span>'
+        )
+
     def _scroll_log(self):
         QTimer.singleShot(0, lambda:
             self.log_display.verticalScrollBar().setValue(

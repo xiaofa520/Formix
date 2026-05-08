@@ -5,7 +5,7 @@ import shlex
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QKeySequence, QTextCharFormat, QTextCursor
-from PyQt6.QtWidgets import QTextEdit, QVBoxLayout, QWidget, QProgressBar
+from PyQt6.QtWidgets import QTextEdit, QVBoxLayout, QWidget
 
 from ..i18n import resolve_language, tr
 
@@ -13,11 +13,13 @@ from ..i18n import resolve_language, tr
 TXT_INVALID = "Please enter an FFmpeg/FFplay/FFprobe command."
 TXT_ONLY_FFMPEG = "Only ffmpeg/ffplay/ffprobe commands are allowed."
 TXT_BAD_PARSE = "Failed to parse command."
-TXT_BLOCKED = "Shell control characters are blocked. Use a single ffmpeg/ffplay/ffprobe command."
+TXT_BLOCKED = (
+    "Shell control operators are not supported here. "
+    "Use a single ffmpeg/ffplay/ffprobe command, and quote them if they are part of an FFmpeg argument."
+)
 TXT_MISSING_FFMPEG = "FFmpeg not found. Please download it from Settings."
 TXT_MISSING_FFPROBE = "FFprobe not found. Please download it from Settings."
 TXT_MISSING_FFPLAY = "FFplay not found. Please download it from Settings."
-TXT_CANCELLED = "Cancelled."
 TXT_READY = (
     "Formix 命令台\n"
     "仅支持 ffmpeg / ffplay / ffprobe 命令。\n"
@@ -25,12 +27,6 @@ TXT_READY = (
     "Ctrl+Enter 换行。\n"
 )
 BLOCKED_CHARS = {"|", "&", ";", ">", "<", "`"}
-_NO_VALUE_OPTIONS = {
-    "-y", "-n", "-an", "-vn", "-sn", "-dn",
-    "-shortest", "-nostdin", "-hide_banner",
-    "-stats", "-nostats", "-re", "-copyts",
-    "-ignore_unknown", "-benchmark", "-benchmark_all",
-}
 
 COMMAND_DESCRIPTIONS = {
     "ffmpeg": "Start FFmpeg. You can type any FFmpeg option supported by your build.",
@@ -366,6 +362,10 @@ class CommandConverterPage(QWidget):
         self._command_history = []
         self._history_index = None
         self._history_draft = ""
+        self._progress_marker = None
+        self._live_marker = None
+        self._terminal_mode = True
+        self._interrupt_requested = False
         self._theme_text_color = "#151514"
         self._theme_muted_color = "#4A4A49"
         self._theme_accent_color = "#2563EB"
@@ -406,15 +406,6 @@ class CommandConverterPage(QWidget):
 
         root.addWidget(self.terminal)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("0%")
-        self.progress_bar.setFixedHeight(10)
-        self.progress_bar.hide()
-        root.addWidget(self.progress_bar)
-
         self.setFocusProxy(self.terminal)
 
         self.start_conversion_button = self.terminal
@@ -425,14 +416,14 @@ class CommandConverterPage(QWidget):
     def _command_ready_lines(self):
         lang = resolve_language(self._language)
         if lang == "zh_TW":
-            return ["Formix 命令列", "僅支援 ffmpeg / ffplay / ffprobe 命令。", "按 Enter 執行，Ctrl+C 中斷執行。", "Ctrl+Enter 換行。"]
+            return ["Formix 終端", "僅支援 ffmpeg / ffplay / ffprobe 命令。", "按 Enter 執行，Ctrl+C 中斷執行。", "Ctrl+Enter 換行。"]
         if lang == "en":
-            return ["Formix Command", "Only ffmpeg / ffplay / ffprobe commands are supported.", "Press Enter to run, Ctrl+C to stop.", "Ctrl+Enter for a new line."]
+            return ["Formix Terminal", "Only ffmpeg / ffplay / ffprobe commands are supported.", "Press Enter to run, Ctrl+C to stop.", "Ctrl+Enter for a new line."]
         if lang == "ja":
-            return ["Formix コマンド", "ffmpeg / ffplay / ffprobe コマンドのみ使用できます。", "Enter で実行、Ctrl+C で停止。", "Ctrl+Enter で改行。"]
+            return ["Formix ターミナル", "ffmpeg / ffplay / ffprobe コマンドのみ使用できます。", "Enter で実行、Ctrl+C で停止。", "Ctrl+Enter で改行。"]
         if lang == "ko":
-            return ["Formix 명령", "ffmpeg / ffplay / ffprobe 명령만 사용할 수 있습니다.", "Enter로 실행, Ctrl+C로 중단.", "Ctrl+Enter로 줄바꿈."]
-        return ["Formix 命令行", "仅支持 ffmpeg / ffplay / ffprobe 命令。", "回车执行，Ctrl+C 中断运行。", "Ctrl+Enter 换行。"]
+            return ["Formix 터미널", "ffmpeg / ffplay / ffprobe 명령만 사용할 수 있습니다.", "Enter로 실행, Ctrl+C로 중단.", "Ctrl+Enter로 줄바꿈."]
+        return ["Formix 终端", "仅支持 ffmpeg / ffplay / ffprobe 命令。", "回车执行，Ctrl+C 中断运行。", "Ctrl+Enter 换行。"]
 
     def _make_format(self, color: str, bold: bool = False):
         fmt = QTextCharFormat()
@@ -455,6 +446,7 @@ class CommandConverterPage(QWidget):
             "meta": self._make_format(self._theme_meta_color),
             "encoder": self._make_format(self._theme_meta_color, bold=True),
             "progress": self._make_format(self._theme_info_color),
+            "live": self._make_format(self._theme_muted_color),
         }.get(kind, self._make_format(self._theme_text_color))
 
     def _apply_terminal_style(self):
@@ -504,15 +496,6 @@ QTextEdit#full_terminal {{
     selection-background-color: {selection_bg};
     selection-color: {text};
     font-family: "{skin['font']}","Consolas","JetBrains Mono","SF Mono","Menlo",monospace;
-}}
-QProgressBar {{
-    background: rgba(148,163,184,0.12);
-    border: none;
-    border-radius: 0;
-    color: {text};
-}}
-QProgressBar::chunk {{
-    background: {accent};
 }}
 QScrollBar:vertical {{
     background: transparent;
@@ -579,10 +562,10 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self._pending_command = ""
         self._history_index = None
         self._history_draft = ""
+        self._progress_marker = None
+        self._live_marker = None
+        self._interrupt_requested = False
         self._current_tool = "ffmpeg"
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("0%")
-        self.progress_bar.hide()
         self.terminal.clear()
         ready_lines = self._command_ready_lines()
         kinds = ["banner", "meta", "info", "info"]
@@ -599,13 +582,19 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self._record_history = False
         try:
             self.terminal.clear()
+            self._progress_marker = None
+            self._live_marker = None
             for event in history:
                 if event["type"] == "text":
-                    self._append_terminal_text(
+                    marker = self._append_terminal_text(
                         event["text"],
                         ensure_newline=event["ensure_newline"],
                         kind=event["kind"],
                     )
+                    if event["kind"] == "progress":
+                        self._progress_marker = marker
+                    elif event["kind"] == "live":
+                        self._live_marker = marker
                 elif event["type"] == "prompt":
                     self._append_prompt()
             self._prompt_pos = len(self.terminal.toPlainText())
@@ -627,32 +616,97 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self.terminal.setTextCursor(cursor)
         self.terminal.ensureCursorVisible()
 
+    def _should_follow_output(self) -> bool:
+        sb = self.terminal.verticalScrollBar()
+        return sb.value() >= max(0, sb.maximum() - 4)
+
+    def _capture_view_state(self):
+        sb = self.terminal.verticalScrollBar()
+        return self._should_follow_output(), sb.value(), self.terminal.textCursor()
+
+    def _restore_view_state(self, follow_output: bool, scroll_value: int, cursor: QTextCursor):
+        if follow_output:
+            self._move_cursor_to_end()
+            return
+        self.terminal.setTextCursor(cursor)
+        sb = self.terminal.verticalScrollBar()
+        sb.setValue(min(scroll_value, sb.maximum()))
+
     def focus_terminal(self):
         if not hasattr(self, "terminal") or self.terminal is None:
             return
         self.terminal.setFocus(Qt.FocusReason.OtherFocusReason)
         self._move_cursor_to_end()
 
+    def _external_busy_reason(self) -> str:
+        window = self.window()
+        if window is None:
+            return ""
+        if hasattr(window, "command_page_busy_reason"):
+            try:
+                return window.command_page_busy_reason(self) or ""
+            except TypeError:
+                return window.command_page_busy_reason() or ""
+        return ""
+
     def _append_terminal_text(self, text: str, ensure_newline: bool = True, kind: str = "text"):
-        cursor = self.terminal.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.terminal.setTextCursor(cursor)
-        cursor = self.terminal.textCursor()
+        follow_output, scroll_value, view_cursor = self._capture_view_state()
+        cursor = QTextCursor(self.terminal.document())
+        active_marker = self._progress_marker if kind == "progress" else self._live_marker if kind == "live" else None
+        insert_before_progress = (
+            self._progress_marker is not None
+            and kind != "progress"
+            and kind != "live"
+            and self._active
+            and self._current_tool == "ffmpeg"
+        )
+        if insert_before_progress:
+            cursor.setPosition(self._progress_marker["start"])
+        elif active_marker is not None:
+            cursor.setPosition(active_marker["start"])
+            cursor.setPosition(active_marker["end"], QTextCursor.MoveMode.KeepAnchor)
+            cursor.removeSelectedText()
+        else:
+            cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.setCharFormat(self._kind_format(kind))
+        start = cursor.position()
         suffix = "\n" if ensure_newline and not text.endswith("\n") else ""
         cursor.insertText(text + suffix)
+        end = cursor.position()
         cursor.setCharFormat(self._kind_format("text"))
-        self.terminal.setTextCursor(cursor)
+        history_idx = None
         if self._record_history:
-            self._terminal_history.append(
-                {
-                    "type": "text",
-                    "text": text,
-                    "ensure_newline": ensure_newline,
-                    "kind": kind,
-                }
-            )
-        self._move_cursor_to_end()
+            event = {
+                "type": "text",
+                "text": text,
+                "ensure_newline": ensure_newline,
+                "kind": kind,
+            }
+            if insert_before_progress and self._progress_marker is not None:
+                history_idx = self._progress_marker["history_idx"]
+                if history_idx is None:
+                    history_idx = len(self._terminal_history)
+                self._terminal_history.insert(history_idx, event)
+            elif active_marker is not None:
+                history_idx = active_marker["history_idx"]
+                if history_idx is None:
+                    history_idx = len(self._terminal_history)
+                    self._terminal_history.append(event)
+                elif 0 <= history_idx < len(self._terminal_history):
+                    self._terminal_history[history_idx] = event
+                else:
+                    self._terminal_history.append(event)
+            else:
+                history_idx = len(self._terminal_history)
+                self._terminal_history.append(event)
+        if insert_before_progress and self._progress_marker is not None:
+            delta = end - start
+            self._progress_marker["start"] += delta
+            self._progress_marker["end"] += delta
+            if self._progress_marker["history_idx"] is not None:
+                self._progress_marker["history_idx"] += 1
+        self._restore_view_state(follow_output, scroll_value, view_cursor)
+        return {"start": start, "end": end, "history_idx": history_idx}
 
     def _append_prompt(self):
         cursor = self.terminal.textCursor()
@@ -667,6 +721,62 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             self._terminal_history.append({"type": "prompt"})
         self._history_index = None
         self._history_draft = ""
+
+    @staticmethod
+    def _format_terminal_progress(pct: int) -> str:
+        pct = max(0, min(100, int(pct)))
+        width = 24
+        filled = round(width * pct / 100)
+        bar = "#" * filled + "." * (width - filled)
+        return f"progress [{bar}] {pct:>3}%"
+
+    def _update_progress_marker(self, pct: int):
+        text = self._format_terminal_progress(pct)
+        if not self._progress_marker:
+            self._progress_marker = self._append_terminal_text(text, kind="progress")
+            return
+
+        follow_output, scroll_value, view_cursor = self._capture_view_state()
+        start = self._progress_marker["start"]
+        end = self._progress_marker["end"]
+        history_idx = self._progress_marker["history_idx"]
+
+        cursor = QTextCursor(self.terminal.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        cursor.setCharFormat(self._kind_format("progress"))
+        cursor.insertText(text + "\n")
+        new_end = cursor.position()
+        cursor.setCharFormat(self._kind_format("text"))
+
+        self._progress_marker["end"] = new_end
+        if history_idx is not None and 0 <= history_idx < len(self._terminal_history):
+            self._terminal_history[history_idx]["text"] = text
+            self._terminal_history[history_idx]["ensure_newline"] = True
+            self._terminal_history[history_idx]["kind"] = "progress"
+        self._restore_view_state(follow_output, scroll_value, view_cursor)
+
+    @staticmethod
+    def _is_live_terminal_line(text: str) -> bool:
+        s = (text or "").strip()
+        if not s:
+            return False
+        if "\r" in text:
+            return True
+        if re.match(r"^\s*frame=\s*\d+", s):
+            return True
+        if re.match(r"^\s*\d+(?:\.\d+)?\s+A-V:", s):
+            return True
+        if all(token in s for token in ("A-V:", "fd=", "aq=", "vq=", "sq=")):
+            return True
+        return False
+
+    def _update_live_marker(self, text: str):
+        cleaned = (text or "").replace("\r", "").strip()
+        if not cleaned:
+            return
+        self._live_marker = self._append_terminal_text(cleaned, kind="live")
 
     def _set_current_command(self, command: str):
         command = command or ""
@@ -772,46 +882,51 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         return False
 
     def _parse_command_tokens(self, raw: str):
-        raw_tokens = shlex.split(raw, posix=False)
-        if not raw_tokens:
+        posix_mode = self._platform != "Windows"
+        raw_tokens = shlex.split(raw, posix=posix_mode)
+        tokens = self._normalize_tokens(raw_tokens)
+        if not tokens:
             raise ValueError("empty command")
+        return tokens
 
-        parsed = [self._strip_token(raw_tokens[0])]
-        i = 1
-        while i < len(raw_tokens):
-            token = raw_tokens[i]
-            if self._is_option_token(token):
-                parsed.append(self._strip_token(token))
-                if token in _NO_VALUE_OPTIONS:
-                    i += 1
-                    continue
-
-                if token == "-i":
-                    j = i + 1
-                    while j < len(raw_tokens) and not self._is_option_token(raw_tokens[j]):
-                        j += 1
-                    if j <= i + 1:
-                        raise ValueError("missing input path")
-                    parsed.append(" ".join(self._strip_token(t) for t in raw_tokens[i + 1:j]))
-                    i = j
-                    continue
-
-                if i + 1 < len(raw_tokens) and not self._is_option_token(raw_tokens[i + 1]):
-                    parsed.append(self._strip_token(raw_tokens[i + 1]))
-                    i += 2
-                else:
-                    i += 1
+    @staticmethod
+    def _has_unquoted_shell_operator(raw: str) -> bool:
+        in_single = False
+        in_double = False
+        escaped = False
+        i = 0
+        while i < len(raw):
+            ch = raw[i]
+            if escaped:
+                escaped = False
+                i += 1
                 continue
-
-            parsed.append(" ".join(self._strip_token(t) for t in raw_tokens[i:]))
-            break
-
-        return parsed
+            if ch == "\\" and not in_single:
+                escaped = True
+                i += 1
+                continue
+            if ch == "'" and not in_double:
+                in_single = not in_single
+                i += 1
+                continue
+            if ch == '"' and not in_single:
+                in_double = not in_double
+                i += 1
+                continue
+            if in_single or in_double:
+                i += 1
+                continue
+            if ch in BLOCKED_CHARS:
+                return True
+            if ch == "$" and i + 1 < len(raw) and raw[i + 1] == "(":
+                return True
+            i += 1
+        return False
 
     def _validate_command(self, raw: str):
         if not raw:
             return False, TXT_INVALID
-        if any(ch in raw for ch in BLOCKED_CHARS) or "$(" in raw:
+        if self._has_unquoted_shell_operator(raw):
             return False, TXT_BLOCKED
         tokens, err = self._tokenize_command(raw)
         if err:
@@ -857,11 +972,17 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 
     def _on_enter_pressed(self):
         if self._active:
-            self._append_terminal_text("\n" + TXT_CANCELLED, kind="warning")
-            self.cancel_conversion_signal.emit()
+            self._move_cursor_to_end()
             return
 
         raw = self._current_command()
+        busy_reason = self._external_busy_reason()
+        if busy_reason:
+            self._pending_command = ""
+            self._append_terminal_text("\n" + busy_reason, kind="warning")
+            self._append_prompt()
+            self._prompt_pos = len(self.terminal.toPlainText())
+            return
         ok, err = self._validate_command(raw)
         if not ok:
             self._pending_command = ""
@@ -878,6 +999,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             return
 
         self._active = True
+        self._interrupt_requested = False
         self._pending_command = raw
         self._push_history_command(raw)
         self._append_terminal_text("", kind="text")
@@ -904,8 +1026,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 if tok and not tok.startswith("-"):
                     input_hint = tok
                     break
-            if tool in {"ffplay", "ffplay.exe"}:
-                output_hint = ""
+            output_hint = ""
         self.input_files = [input_hint] if input_hint else [f"{tool}-command"]
         self.output_dir = os.path.dirname(output_hint) if output_hint else ""
         self._output_path = output_hint
@@ -924,16 +1045,31 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             self._prompt_pos = len(self.terminal.toPlainText())
             return
         if tool in {"ffprobe", "ffprobe.exe"}:
-            self.ffmpeg_handler.run_tool_command("ffprobe", 0, args, input_hint=input_hint, output_hint=output_hint)
+            self.ffmpeg_handler.run_tool_command(
+                "ffprobe", 0, args,
+                input_hint=input_hint, output_hint=output_hint,
+                terminal_mode=self._terminal_mode,
+            )
         elif tool in {"ffplay", "ffplay.exe"}:
-            self.ffmpeg_handler.run_tool_command("ffplay", 0, args, input_hint=input_hint, output_hint=output_hint)
+            self.ffmpeg_handler.run_tool_command(
+                "ffplay", 0, args,
+                input_hint=input_hint, output_hint=output_hint,
+                terminal_mode=self._terminal_mode,
+            )
         else:
-            self.ffmpeg_handler.run_ffmpeg_command(0, args, input_hint=input_hint, output_hint=output_hint)
+            self.ffmpeg_handler.run_ffmpeg_command(
+                0, args,
+                input_hint=input_hint, output_hint=output_hint,
+                terminal_mode=self._terminal_mode,
+            )
 
     def log_message(self, msg: str, kind: str = "info"):
         self._append_terminal_text(msg, kind=kind)
 
     def log_ffmpeg_line(self, idx: int, kind: str, text: str):
+        if self._is_live_terminal_line(text):
+            self._update_live_marker(text)
+            return
         if kind == "progress":
             return
         self._append_terminal_text(text, kind=kind)
@@ -947,31 +1083,26 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 
     def _on_started(self, idx, path):
         if self._active and idx == 0:
-            self._append_terminal_text(f"running {self._current_tool} ...", kind="info")
-            if self._current_tool == "ffmpeg":
-                self.progress_bar.setValue(0)
-                self.progress_bar.setFormat("0%")
-                self.progress_bar.show()
-            else:
-                self.progress_bar.hide()
+            if self._current_tool == "ffmpeg" and not self._terminal_mode:
+                self._update_progress_marker(0)
 
     def _on_progress(self, idx, msg, pct):
-        if self._active and idx == 0 and self._current_tool == "ffmpeg":
-            self.progress_bar.setValue(max(0, min(100, int(pct))))
-            self.progress_bar.setFormat(f"{int(pct)}%")
+        if self._active and idx == 0 and self._current_tool == "ffmpeg" and not self._terminal_mode:
+            self._update_progress_marker(pct)
 
     def _on_finished(self, idx, status, msg):
         if not self._active or idx != 0:
             return
         self._active = False
         self._pending_command = ""
-        if self._current_tool == "ffmpeg" and status == "success":
-            self.progress_bar.setValue(100)
-            self.progress_bar.setFormat("100%")
-        else:
-            self.progress_bar.setValue(0)
-            self.progress_bar.setFormat("0%")
-        self.progress_bar.hide()
+        if self._current_tool == "ffmpeg" and status == "success" and not self._terminal_mode:
+            self._update_progress_marker(100)
+        self._progress_marker = None
+        self._live_marker = None
+        if status == "cancelled" and self._interrupt_requested:
+            tool_name = (self._current_tool or "process").upper()
+            self._append_terminal_text(f"{tool_name} terminated by Ctrl+C", kind="warning")
+        self._interrupt_requested = False
         kind = {"success": "success", "cancelled": "warning", "failure": "error"}.get(status, "info")
         self._append_terminal_text(msg, kind=kind)
         self._append_prompt()
@@ -980,6 +1111,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     def _on_interrupt_pressed(self):
         if not self._active:
             return
+        self._interrupt_requested = True
         self._append_terminal_text("^C", kind="warning")
         self.cancel_conversion_signal.emit()
 

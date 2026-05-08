@@ -179,7 +179,7 @@ class BackgroundWidget(QWidget):
         self._dark          = False
         self._blur_r        = 0
         self._bg_opacity     = 50
-        self._mask_alpha     = 51
+        self._mask_alpha     = 26
         self._avg_bright    = 128
         self._avg_r = self._avg_g = self._avg_b = 128
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -496,7 +496,7 @@ class MainWindow(QMainWindow):
             self._bg.set_bg_colors(self._bg_colors)
         self._bg.set_fill_mode(self._bg_fill_mode)
         self._bg.set_mask_color(self._effective_theme_name() == "dark")
-        self._bg.set_mask_alpha(51)
+        self._bg.set_mask_alpha(26)
         self._bg.set_bg_opacity(self._bg_opacity)
         self._apply_theme()
         self._init_system_theme_timer()
@@ -694,6 +694,14 @@ class MainWindow(QMainWindow):
             if pg is self.command_page and hasattr(pg, "focus_terminal"):
                 pg.focus_terminal()
 
+    def command_page_busy_reason(self, requester=None) -> str:
+        active_page = self._batch_page
+        if active_page is None:
+            return ""
+        if requester is not None and active_page is requester:
+            return ""
+        return "当前已有转换任务在运行，请等待完成或先取消后再执行命令。"
+
     # ── Batch ────────────────────────────────────────────────────────
     def _on_batch_start(self, idx, inp, args, stem):
         pg = self.current_page
@@ -854,6 +862,14 @@ class MainWindow(QMainWindow):
 
         if status == "success":
             pg.update_overall_progress(idx, self._batch_total, 100)
+            if hasattr(pg, "set_progress_state"):
+                pg.set_progress_state("100%", "success")
+        elif status == "cancelled":
+            if hasattr(pg, "set_progress_state"):
+                pg.set_progress_state("已取消", "warning")
+        elif status == "failure":
+            if hasattr(pg, "set_progress_state"):
+                pg.set_progress_state("转换失败", "error")
 
         self._batch_done += 1
 

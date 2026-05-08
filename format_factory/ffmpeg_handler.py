@@ -68,15 +68,17 @@ class FFmpegHandler(QObject):
         self._start_worker()
 
     def run_ffmpeg_command(self, idx: int, args: list,
-                           input_hint: str = "", output_hint: str = ""):
+                           input_hint: str = "", output_hint: str = "",
+                           terminal_mode: bool = False):
         """Run a validated ffmpeg command line without going through a shell."""
-        self._q.put(("custom", "ffmpeg", idx, args, input_hint, output_hint))
+        self._q.put(("custom", "ffmpeg", idx, args, input_hint, output_hint, terminal_mode))
         self._start_worker()
 
     def run_tool_command(self, tool: str, idx: int, args: list,
-                         input_hint: str = "", output_hint: str = ""):
+                         input_hint: str = "", output_hint: str = "",
+                         terminal_mode: bool = False):
         """Run a validated ffmpeg/ffprobe/ffplay command line without going through a shell."""
-        self._q.put(("custom", tool, idx, args, input_hint, output_hint))
+        self._q.put(("custom", tool, idx, args, input_hint, output_hint, terminal_mode))
         self._start_worker()
 
     def cancel_conversion(self):
@@ -213,7 +215,8 @@ class FFmpegHandler(QObject):
         self._run_process("ffmpeg", idx, cmd, inp, out, inp)
 
     def _run_custom(self, tool: str, idx: int, args: list,
-                    input_hint: str = "", output_hint: str = ""):
+                    input_hint: str = "", output_hint: str = "",
+                    terminal_mode: bool = False):
         tool = (tool or "ffmpeg").lower()
         display_input = input_hint or (tool.upper() + " 命令")
         cleanup_input = input_hint if input_hint and os.path.isfile(input_hint) else ""
@@ -227,17 +230,114 @@ class FFmpegHandler(QObject):
             self.conversion_finished.emit(idx, "failure", f"找不到 {tool.upper()} 可执行文件")
             return
         cmd = [exe] + list(args)
-        self._run_process(tool, idx, cmd, display_input, output_hint, cleanup_input)
+        self._run_process(tool, idx, cmd, display_input, output_hint, cleanup_input, terminal_mode=terminal_mode)
 
     def _run_process(self, tool: str, idx: int, cmd: list,
                      display_input: str, output_hint: str,
-                     cleanup_input: str):
+                     cleanup_input: str, terminal_mode: bool = False):
         # Emit the full command as first log line
         self.log_line.emit(idx, "cmd", f"$ {tool} " + " ".join(
             f'"{a}"' if " " in a else a for a in cmd[1:]))
 
         self.conversion_started.emit(idx, display_input)
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+        if terminal_mode:
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding="utf-8", errors="replace",
+                    creationflags=flags)
+                with self._lock:
+                    self._proc = proc
+                if self._cancel.is_set() or self._shutdown.is_set():
+                    self._terminate_process(proc)
+                    with self._lock:
+                        self._proc = None
+                    if tool == "ffmpeg":
+                        self._cleanup_output(output_hint, cleanup_input,
+                            lambda msg: self.log_line.emit(idx, "warn", msg))
+                    self.conversion_finished.emit(
+                        idx, "cancelled",
+                        f"'{os.path.basename(display_input)}' 已取消。")
+                    return
+
+                last_lines = []
+                for raw in proc.stdout:
+                    if self._cancel.is_set() or self._shutdown.is_set():
+                        self._terminate_process(proc)
+                        with self._lock:
+                            self._proc = None
+                        if tool == "ffmpeg":
+                            self._cleanup_output(output_hint, cleanup_input,
+                                lambda msg: self.log_line.emit(idx, "warn", msg))
+                        self.conversion_finished.emit(
+                            idx, "cancelled",
+                            f"'{os.path.basename(display_input)}' 已取消。")
+                        return
+                    line = raw.rstrip("\n")
+                    if not line.strip():
+                        continue
+                    last_lines.append(line)
+                    if len(last_lines) > 40:
+                        last_lines.pop(0)
+                    kind = "warn" if re.search(
+                        r"\b(error|failed|invalid|cannot|unable|not found)\b",
+                        line, re.IGNORECASE
+                    ) else "meta"
+                    self.log_line.emit(idx, kind, line[:2000])
+
+                proc.wait()
+                with self._lock:
+                    self._proc = None
+
+                if proc.returncode == 0:
+                    if tool == "ffmpeg":
+                        verdict = self._cleanup_output(output_hint, cleanup_input,
+                            lambda msg: self.log_line.emit(idx, "warn", msg))
+                        if verdict == "deleted":
+                            tail = "\n".join(
+                                l for l in last_lines[-10:]
+                                if l.strip() and not _is_stats_line(l))
+                            self.conversion_finished.emit(
+                                idx, "failure",
+                                f"'{os.path.basename(display_input)}' 转换结果异常，输出文件已删除。\n{tail}")
+                            return
+                    if output_hint:
+                        msg = (
+                            f"'{os.path.basename(display_input)}'  →  "
+                            f"'{os.path.basename(output_hint)}' ✓"
+                        )
+                    else:
+                        msg = f"'{os.path.basename(display_input)}'  执行完成 ✓"
+                    self.conversion_finished.emit(idx, "success", msg)
+                else:
+                    if tool == "ffmpeg":
+                        self._cleanup_output(output_hint, cleanup_input,
+                            lambda msg: self.log_line.emit(idx, "warn", msg))
+                    tail = "\n".join(
+                        l for l in last_lines[-15:]
+                        if l.strip() and not _is_stats_line(l))
+                    suffix = f"\n{tail}" if tail else ""
+                    self.conversion_finished.emit(
+                        idx, "failure",
+                        f"'{os.path.basename(display_input)}' 失败 (code {proc.returncode}){suffix}")
+            except FileNotFoundError:
+                if tool == "ffmpeg":
+                    self._cleanup_output(output_hint, cleanup_input, lambda msg: None)
+                self.conversion_finished.emit(
+                    idx, "failure", f"找不到 {tool.upper()}：{cmd[0] if cmd else ''}")
+            except Exception as exc:
+                if tool == "ffmpeg":
+                    self._cleanup_output(output_hint, cleanup_input, lambda msg: None)
+                self.conversion_finished.emit(
+                    idx, "failure", f"意外错误：{exc}")
+            finally:
+                with self._lock:
+                    self._proc = None
+            return
 
         if tool in {"ffprobe", "ffplay"}:
             try:
