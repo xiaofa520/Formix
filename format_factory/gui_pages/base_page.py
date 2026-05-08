@@ -1,4 +1,4 @@
-# format_factory/gui_pages/base_page.py
+﻿# format_factory/gui_pages/base_page.py
 import os
 import html as _html_mod
 import shlex
@@ -14,6 +14,7 @@ from PyQt6.QtGui import QFont, QDragEnterEvent, QDropEvent, QColor, QBrush
 
 from ..config import (VIDEO_FORMATS, AUDIO_FORMATS, IMAGE_FORMATS,
                       M3U8_OUTPUT_FORMATS, DEFAULT_FFMPEG_ARGS)
+from ..i18n import tr, resolve_language
 
 # ── Size constants (match reference screenshot) ───────────────────
 _BTN_H    = 32
@@ -31,6 +32,11 @@ class SectionLabel(QLabel):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setObjectName("section_title")
+
+
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event):
+        event.ignore()
 
 
 class CardWidget(QFrame):
@@ -86,6 +92,8 @@ class DropFileList(QListWidget):
 
 # ── Custom args panel ─────────────────────────────────────────────
 class ArgsPanel(QWidget):
+    preset_changed = pyqtSignal()
+
     # 通用备用预设（当没有专属预设时使用）
     _CUSTOM_ONLY = [("自定义…", "__custom__")]
 
@@ -96,6 +104,8 @@ class ArgsPanel(QWidget):
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
             ("快速压缩 (H.264 CRF28)",     ["-crf", "28"]),
+            ("平衡压缩 (H.265 CRF26)",     ["-c:v", "libx265", "-preset", "medium",
+                                            "-crf", "26", "-c:a", "aac", "-b:a", "160k"]),
             ("极速编码 (ultrafast)",        ["-preset", "ultrafast", "-crf", "23"]),
             ("H.265 / HEVC (CRF28)",       ["-c:v", "libx265", "-preset", "medium",
                                             "-crf", "28", "-c:a", "aac", "-b:a", "192k"]),
@@ -111,6 +121,8 @@ class ArgsPanel(QWidget):
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
             ("快速压缩 (H.264 CRF28)",     ["-crf", "28"]),
+            ("平衡压缩 (H.265 CRF26)",     ["-c:v", "libx265", "-preset", "medium",
+                                            "-crf", "26", "-c:a", "aac", "-b:a", "160k"]),
             ("H.265 / HEVC (CRF28)",       ["-c:v", "libx265", "-preset", "medium",
                                             "-crf", "28", "-c:a", "aac", "-b:a", "192k"]),
             ("H.265 高质量 (CRF22)",       ["-c:v", "libx265", "-preset", "slow",
@@ -119,6 +131,8 @@ class ArgsPanel(QWidget):
                                             "-c:a", "libopus", "-b:a", "128k"]),
             ("无损 (H.264 lossless)",      ["-c:v", "libx264", "-preset", "medium",
                                             "-crf", "0", "-c:a", "flac"]),
+            ("无损存档 (FFV1 + FLAC)",     ["-c:v", "ffv1", "-level", "3",
+                                            "-c:a", "flac", "-compression_level", "8"]),
             ("仅视频流 (去除音频)",         ["-c:v", "copy", "-an"]),
             ("仅复制流 (超快无重编码)",     ["-c", "copy"]),
             ("自定义…",                    "__custom__"),
@@ -130,6 +144,8 @@ class ArgsPanel(QWidget):
                                             "-c:a", "pcm_s16le"]),
             ("ProRes 4444 (最高质量)",     ["-c:v", "prores_ks", "-profile:v", "4",
                                             "-c:a", "pcm_s16le"]),
+            ("无损 (H.264 lossless)",      ["-c:v", "libx264", "-preset", "medium",
+                                            "-crf", "0", "-c:a", "pcm_s16le"]),
             ("仅视频流 (去除音频)",         ["-c:v", "copy", "-an"]),
             ("仅复制流 (超快无重编码)",     ["-c", "copy"]),
             ("自定义…",                    "__custom__"),
@@ -140,6 +156,8 @@ class ArgsPanel(QWidget):
                                            "-c:a", "libmp3lame", "-q:a", "2"]),
             ("H.264 + MP3",              ["-c:v", "libx264", "-crf", "23",
                                           "-c:a", "libmp3lame", "-b:a", "192k"]),
+            ("小体积 (MPEG-4 Q7)",        ["-c:v", "mpeg4", "-q:v", "7",
+                                           "-c:a", "libmp3lame", "-q:a", "5"]),
             ("仅视频流 (去除音频)",        ["-c:v", "copy", "-an"]),
             ("仅复制流 (超快无重编码)",    ["-c", "copy"]),
             ("自定义…",                   "__custom__"),
@@ -150,6 +168,8 @@ class ArgsPanel(QWidget):
                                             "-c:a", "libopus", "-b:a", "192k"]),
             ("VP9 快速压缩 (CRF40)",       ["-c:v", "libvpx-vp9", "-crf", "40", "-b:v", "0",
                                             "-c:a", "libopus", "-b:a", "96k"]),
+            ("极致压缩 (VP9 CRF48)",       ["-c:v", "libvpx-vp9", "-crf", "48", "-b:v", "0",
+                                            "-c:a", "libopus", "-b:a", "64k"]),
             ("AV1 (libaom, 慢速高压缩)",   ["-c:v", "libaom-av1", "-crf", "35", "-b:v", "0",
                                             "-c:a", "libopus", "-b:a", "128k"]),
             ("仅视频流 (去除音频)",         ["-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-an"]),
@@ -191,6 +211,7 @@ class ArgsPanel(QWidget):
             ("标准 VBR (V4)",              ["-c:a", "libmp3lame", "-q:a", "4"]),
             ("低码率 (128k)",              ["-b:a", "128k"]),
             ("低码率 (96k)",               ["-b:a", "96k"]),
+            ("语音压缩 (64k 单声道)",      ["-ac", "1", "-b:a", "64k"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -199,6 +220,7 @@ class ArgsPanel(QWidget):
             ("高质量 (AAC 320k)",          ["-b:a", "320k"]),
             ("无损 ALAC (Apple Lossless)", ["-c:a", "alac"]),
             ("低码率 (AAC 128k)",          ["-b:a", "128k"]),
+            ("HE-AAC 小体积 (64k)",        ["-c:a", "aac", "-b:a", "64k"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -207,6 +229,7 @@ class ArgsPanel(QWidget):
             ("高质量 (320k)",              ["-b:a", "320k"]),
             ("标准 (128k)",               ["-b:a", "128k"]),
             ("低码率 (96k)",               ["-b:a", "96k"]),
+            ("语音压缩 (64k 单声道)",      ["-ac", "1", "-b:a", "64k"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -215,6 +238,7 @@ class ArgsPanel(QWidget):
             ("PCM 24bit",                  ["-c:a", "pcm_s24le"]),
             ("PCM 32bit",                  ["-c:a", "pcm_s32le"]),
             ("PCM 浮点 32bit",             ["-c:a", "pcm_f32le"]),
+            ("广播后期 (PCM 24bit 48k)",   ["-c:a", "pcm_s24le", "-ar", "48000"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -222,6 +246,7 @@ class ArgsPanel(QWidget):
             ("默认 (压缩级别 5)",           []),
             ("最高压缩 (级别 8)",           ["-c:a", "flac", "-compression_level", "8"]),
             ("最快压缩 (级别 0)",           ["-c:a", "flac", "-compression_level", "0"]),
+            ("保真存档 (级别 8)",           ["-c:a", "flac", "-compression_level", "8", "-sample_fmt", "s16"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -230,6 +255,7 @@ class ArgsPanel(QWidget):
             ("高质量 (Q8)",                ["-c:a", "libvorbis", "-q:a", "8"]),
             ("标准 (Q6)",                  ["-c:a", "libvorbis", "-q:a", "6"]),
             ("低码率 (Q2)",                ["-c:a", "libvorbis", "-q:a", "2"]),
+            ("语音压缩 (Q1 单声道)",       ["-c:a", "libvorbis", "-q:a", "1", "-ac", "1"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -239,6 +265,7 @@ class ArgsPanel(QWidget):
             ("标准 (128k)",               ["-c:a", "libopus", "-b:a", "128k"]),
             ("低码率 (64k)",               ["-c:a", "libopus", "-b:a", "64k"]),
             ("极低码率 (32k)",             ["-c:a", "libopus", "-b:a", "32k"]),
+            ("语音模式 (24k 单声道)",      ["-c:a", "libopus", "-b:a", "24k", "-ac", "1"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -248,6 +275,7 @@ class ArgsPanel(QWidget):
             ("高质量 (Q1)",                ["-q:v", "1"]),
             ("标准 (Q3)",                  ["-q:v", "3"]),
             ("压缩 (Q5)",                  ["-q:v", "5"]),
+            ("高压缩 (Q8)",                ["-q:v", "8"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos", "-q:v", "2"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos", "-q:v", "2"]),
             ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos",  "-q:v", "2"]),
@@ -258,6 +286,7 @@ class ArgsPanel(QWidget):
             ("默认",                       []),
             ("最大压缩 (级别 9)",           ["-compression_level", "9"]),
             ("无压缩 (级别 0)",             ["-compression_level", "0"]),
+            ("无损压缩 (级别 6)",           ["-compression_level", "6"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos"]),
             ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos"]),
@@ -267,6 +296,7 @@ class ArgsPanel(QWidget):
         "webp": [
             ("默认 (Q85)",                 []),
             ("高质量 (Q95)",               ["-quality", "95"]),
+            ("无损 WebP",                  ["-lossless", "1", "-compression_level", "6"]),
             ("有损压缩 (Q60)",             ["-quality", "60"]),
             ("极小体积 (Q40)",             ["-quality", "40"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos", "-quality", "85"]),
@@ -286,6 +316,7 @@ class ArgsPanel(QWidget):
             ("默认",                       []),
             ("LZW 无损压缩",               ["-compression_algo", "lzw"]),
             ("Deflate 压缩",               ["-compression_algo", "deflate"]),
+            ("PackBits 压缩",              ["-compression_algo", "packbits"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos"]),
             ("自定义…",                    "__custom__"),
@@ -305,6 +336,8 @@ class ArgsPanel(QWidget):
         "video": [
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
+            ("平衡压缩 (H.265 CRF26)",     ["-c:v", "libx265", "-preset", "medium",
+                                            "-crf", "26", "-c:a", "aac", "-b:a", "160k"]),
             ("仅复制流 (超快无重编码)",     ["-c", "copy"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -312,6 +345,7 @@ class ArgsPanel(QWidget):
             ("默认 (192k)",               []),
             ("高质量 (320k)",              ["-b:a", "320k"]),
             ("低码率 (96k)",               ["-b:a", "96k"]),
+            ("语音压缩 (64k 单声道)",      ["-ac", "1", "-b:a", "64k"]),
             ("自定义…",                    "__custom__"),
         ],
         "image": [
@@ -343,7 +377,7 @@ class ArgsPanel(QWidget):
 
         row = QHBoxLayout(); row.setSpacing(8)
         row.addWidget(SectionLabel("预设 / 参数"))
-        self.preset_combo = QComboBox()
+        self.preset_combo = NoWheelComboBox()
         self.preset_combo.setMinimumSize(_COMBO_W, _CTRL_H)
         self._fill_combo()
         self.preset_combo.currentIndexChanged.connect(self._on_preset)
@@ -371,20 +405,24 @@ class ArgsPanel(QWidget):
         "默认 (H.264 CRF23)":       "h264",
         "高质量 (H.264 CRF18)":      "h264",
         "快速压缩 (H.264 CRF28)":    "h264",
+        "平衡压缩 (H.265 CRF26)":    "hevc",
         "极速编码 (ultrafast)":       "h264",
         "H.264 + MP3":               "h264",
         "默认 (MPEG-4)":             None,    # mpeg4 编码器 GPU 不支持
         "高质量 (Q2)":               None,
+        "小体积 (MPEG-4 Q7)":        None,
         # H.265/HEVC 系列
         "H.265 / HEVC (CRF28)":     "hevc",
         "H.265 高质量 (CRF22)":     "hevc",
         # AV1 — 目前主流 GPU 不支持 libaom-av1
         "AV1 (libaom, 慢速高压缩)": None,
+        "极致压缩 (VP9 CRF48)":      None,
         # ProRes — GPU 不支持
         "ProRes 422 (专业剪辑)":    None,
         "ProRes 4444 (最高质量)":   None,
         # 无损 lossless — 硬件编码器不支持 CRF 0
         "无损 (H.264 lossless)":    None,
+        "无损存档 (FFV1 + FLAC)":    None,
         # 复制流 / 去音频 — 不需要编码
         "仅视频流 (去除音频)":       None,
         "仅复制流 (超快无重编码)":   None,
@@ -415,6 +453,39 @@ class ArgsPanel(QWidget):
         self.extra_edit.setVisible(self.is_custom_override()) \
             if hasattr(self, "extra_edit") else None
 
+    def set_preset_states(self, states: list[dict]):
+        self.preset_combo.blockSignals(True)
+        current_idx = self.preset_combo.currentIndex()
+        self.preset_combo.clear()
+
+        selected_idx = 0
+        first_enabled = 0
+        enabled_found = False
+
+        for i, ((name, _), state) in enumerate(zip(self._cur_presets, states)):
+            label = f"{name}  [推荐]" if state.get("recommended") else name
+            self.preset_combo.addItem(label)
+            item = self.preset_combo.model().item(i)
+            enabled = state.get("enabled", True)
+            item.setEnabled(enabled)
+            item.setToolTip(state.get("reason", ""))
+            if not enabled:
+                item.setForeground(QBrush(QColor(150, 150, 158)))
+            elif state.get("recommended"):
+                item.setForeground(QBrush(QColor(22, 163, 74)))
+            if enabled and not enabled_found:
+                first_enabled = i
+                enabled_found = True
+
+        if enabled_found:
+            selected_idx = current_idx if 0 <= current_idx < len(states) and states[current_idx].get("enabled", True) else first_enabled
+        elif states:
+            selected_idx = min(max(current_idx, 0), len(states) - 1)
+        self.preset_combo.setCurrentIndex(selected_idx)
+        self.preset_combo.blockSignals(False)
+        self.extra_edit.setVisible(self.is_custom_override()) \
+            if hasattr(self, "extra_edit") else None
+
     def set_output_fmt(self, fmt: str):
         """根据输出格式切换预设列表，重置为第 0 项。"""
         new_presets = self.PRESETS_BY_FMT.get(fmt)
@@ -430,9 +501,11 @@ class ArgsPanel(QWidget):
         self.preset_combo.setCurrentIndex(0)
         self.preset_combo.blockSignals(False)
         self.extra_edit.setVisible(False)
+        self.preset_changed.emit()
 
     def _on_preset(self, _):
         self.extra_edit.setVisible(self.is_custom_override())
+        self.preset_changed.emit()
 
     def is_custom_override(self):
         idx = self.preset_combo.currentIndex()
@@ -469,9 +542,11 @@ class BaseConverterPage(QWidget):
         self.output_dir     = ""
         self._is_dark       = False   # updated by MainWindow._apply_theme
         self.output_formats_available = self._get_fmts(media_type)
-        self.file_original_formats    = {}
+        self.file_media_info          = {}
+        self._language = "auto"
         self._init_ui()
         self._connect_internal_signals()
+        self._update_preset_states()
 
     # ── helpers ──────────────────────────────
     def _get_fmts(self, mt):
@@ -479,11 +554,15 @@ class BaseConverterPage(QWidget):
                 "image": IMAGE_FORMATS, "m3u8": M3U8_OUTPUT_FORMATS}.get(mt, [])
 
     def _media_label(self):
-        return {"video": "视频", "audio": "音频",
-                "image": "图片", "m3u8": "M3U8"}.get(self.media_type, "文件")
+        return {
+            "video": tr(self._language, "tab_video"),
+            "audio": tr(self._language, "tab_audio"),
+            "image": tr(self._language, "tab_image"),
+            "m3u8": tr(self._language, "tab_m3u8"),
+        }.get(self.media_type, tr(self._language, "tab_settings"))
 
     def _get_file_filter(self):
-        return "所有文件 (*.*)"
+        return f"{tr(self._language, 'all_files')} (*.*)"
 
     def _mk_btn(self, text, min_w=_BTN_W, obj_name=""):
         b = QPushButton(text)
@@ -509,7 +588,7 @@ class BaseConverterPage(QWidget):
         fl.setSpacing(8)
 
         file_hdr = QHBoxLayout()
-        self.input_label = SectionLabel(f"文件列表")
+        self.input_label = SectionLabel("文件列表")
         file_hdr.addWidget(self.input_label)
         file_hdr.addStretch()
         # 文件计数标签
@@ -524,7 +603,7 @@ class BaseConverterPage(QWidget):
         fl.addWidget(self.input_file_list_widget, 1)
 
         br = QHBoxLayout(); br.setSpacing(6)
-        self.select_input_files_button = self._mk_btn("＋ 添加文件")
+        self.select_input_files_button = self._mk_btn("添加文件")
         self.select_input_files_button.setToolTip("选择文件（追加到当前列表）")
         self.select_input_files_button.clicked.connect(self._select_files)
         self.select_input_folder_button = self._mk_btn("添加文件夹")
@@ -534,9 +613,13 @@ class BaseConverterPage(QWidget):
             "删除选中", obj_name="danger")
         self.remove_selected_files_button.setToolTip("移除选中的文件")
         self.remove_selected_files_button.clicked.connect(self._remove_files)
+        self.clear_file_list_button = self._mk_btn("清空列表")
+        self.clear_file_list_button.setToolTip("清空当前文件列表")
+        self.clear_file_list_button.clicked.connect(self._clear_file_list)
         br.addWidget(self.select_input_files_button)
         br.addWidget(self.select_input_folder_button)
         br.addWidget(self.remove_selected_files_button)
+        br.addWidget(self.clear_file_list_button)
         br.addStretch()
         fl.addLayout(br)
 
@@ -550,12 +633,14 @@ class BaseConverterPage(QWidget):
         opt_card = CardWidget()
         ol = opt_card.layout()
         ol.setSpacing(10)
-        ol.addWidget(SectionLabel("输出选项"))
+        self.output_options_label = SectionLabel("输出选项")
+        ol.addWidget(self.output_options_label)
 
         # 格式行（视频时追加分辨率下拉）
         fmt_row = QHBoxLayout(); fmt_row.setSpacing(8)
-        fmt_row.addWidget(SectionLabel("格式"))
-        self.output_format_combo = QComboBox()
+        self.format_label = SectionLabel("格式")
+        fmt_row.addWidget(self.format_label)
+        self.output_format_combo = NoWheelComboBox()
         self.output_format_combo.setFixedHeight(_CTRL_H)
         self.output_format_combo.setMinimumWidth(_COMBO_W)
         self.output_format_combo.addItems(self.output_formats_available)
@@ -563,8 +648,9 @@ class BaseConverterPage(QWidget):
         fmt_row.addWidget(self.output_format_combo)
 
         if self.media_type == "video":
-            fmt_row.addWidget(SectionLabel("分辨率"))
-            self.resolution_combo = QComboBox()
+            self.resolution_label = SectionLabel("分辨率")
+            fmt_row.addWidget(self.resolution_label)
+            self.resolution_combo = NoWheelComboBox()
             self.resolution_combo.setFixedHeight(_CTRL_H)
             self.resolution_combo.setMinimumWidth(_COMBO_W)
             self.resolution_combo.addItems([
@@ -586,7 +672,8 @@ class BaseConverterPage(QWidget):
 
         # 目录行
         dir_row = QHBoxLayout(); dir_row.setSpacing(6)
-        dir_row.addWidget(SectionLabel("目录"))
+        self.directory_label = SectionLabel("目录")
+        dir_row.addWidget(self.directory_label)
         self.output_dir_edit = QLineEdit()
         self.output_dir_edit.setPlaceholderText("选择输出目录…")
         self.output_dir_edit.setReadOnly(True)
@@ -595,6 +682,7 @@ class BaseConverterPage(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         dir_row.addWidget(self.output_dir_edit, 1)
         self.select_output_dir_button = self._mk_btn("选择", _BTN_W_SM)
+        self.select_output_dir_button.setToolTip("选择输出目录")
         self.select_output_dir_button.clicked.connect(self._select_dir)
         dir_row.addWidget(self.select_output_dir_button)
         ol.addLayout(dir_row)
@@ -602,6 +690,7 @@ class BaseConverterPage(QWidget):
         # 分隔线 + 参数面板
         self._hline(ol)
         self.args_panel = ArgsPanel(self.media_type)
+        self.args_panel.preset_changed.connect(self._update_state)
         ol.addWidget(self.args_panel)
 
         right_col.addWidget(opt_card)
@@ -613,11 +702,11 @@ class BaseConverterPage(QWidget):
 
         ar = QHBoxLayout(); ar.setSpacing(8)
         self.start_conversion_button = self._mk_btn(
-            "▶  开始转换", min_w=_BTN_W_PRI, obj_name="primary")
+            "开始转换", min_w=_BTN_W_PRI, obj_name="primary")
         self.start_conversion_button.setEnabled(False)
         self.start_conversion_button.clicked.connect(self._start_clicked)
         self.cancel_conversion_button = self._mk_btn(
-            "⏹  取消", min_w=_BTN_W_SM, obj_name="danger")
+            "取消", min_w=_BTN_W_SM, obj_name="danger")
         self.cancel_conversion_button.setEnabled(False)
         self.cancel_conversion_button.clicked.connect(self._cancel_clicked)
         ar.addWidget(self.start_conversion_button)
@@ -640,18 +729,18 @@ class BaseConverterPage(QWidget):
         ll.setSpacing(6)
 
         log_header = QHBoxLayout()
-        log_header.addWidget(SectionLabel("📋  转换日志"))
+        self.log_section_label = SectionLabel("转换日志")
+        log_header.addWidget(self.log_section_label)
         log_header.addStretch()
 
-        self._btn_copy_log = QPushButton("⎘ 复制")
+        self._btn_copy_log = QPushButton("复制")
         self._btn_copy_log.setMinimumSize(64, 26)
         self._btn_copy_log.setMaximumHeight(26)
         self._btn_copy_log.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._btn_copy_log.setToolTip("复制全部日志到剪贴板")
         self._btn_copy_log.clicked.connect(self._copy_log)
-
-        self._btn_clear_log = QPushButton("✕ 清空")
+        self._btn_clear_log = QPushButton("清空")
         self._btn_clear_log.setMinimumSize(64, 26)
         self._btn_clear_log.setMaximumHeight(26)
         self._btn_clear_log.setSizePolicy(
@@ -684,6 +773,7 @@ class BaseConverterPage(QWidget):
         ll.addWidget(self._progress_line)
 
         root.addWidget(log_card, 2)
+        self._retranslate_ui()
 
     def _hline(self, layout):
         f = QFrame()
@@ -728,10 +818,12 @@ class BaseConverterPage(QWidget):
 
     def _clear_file_list(self):
         self.input_files.clear()
-        self.file_original_formats.clear()
+        self.file_media_info.clear()
         self.input_file_list_widget.clear()
         self.overall_progress_bar.setValue(0)
         self._update_state()
+        self._update_combo()
+        self._update_preset_states()
         self._update_file_count()
 
     def _on_files_dropped(self, paths):
@@ -741,7 +833,8 @@ class BaseConverterPage(QWidget):
     def _update_file_count(self):
         n = len(self.input_files)
         if hasattr(self, "_file_count_lbl"):
-            self._file_count_lbl.setText(f"{n} 个文件" if n else "0 个文件")
+            self._file_count_lbl.setText(
+                tr(self._language, "file_count", count=n) if n else tr(self._language, "file_count_zero"))
 
     @staticmethod
     def _fmt_size(path):
@@ -774,6 +867,7 @@ class BaseConverterPage(QWidget):
             self.log_message(f"已添加 {added} 个文件", "info")
             self._update_state()
             self._update_combo()
+            self._update_preset_states()
             self._update_file_count()
         else:
             self.log_message("所选文件已在列表中", "warning")
@@ -787,11 +881,12 @@ class BaseConverterPage(QWidget):
             row = self.input_file_list_widget.row(item)
             if row < len(self.input_files):
                 fp = self.input_files.pop(row)
-                self.file_original_formats.pop(fp, None)
+                self.file_media_info.pop(fp, None)
             self.input_file_list_widget.takeItem(row)
         self.overall_progress_bar.setValue(0)
         self._update_state()
         self._update_combo()
+        self._update_preset_states()
         self._update_file_count()
 
     def _select_dir(self):
@@ -806,6 +901,7 @@ class BaseConverterPage(QWidget):
         fmt = self.output_format_combo.currentText()
         self.args_panel.set_output_fmt(fmt)
         self._update_state()
+        self._update_preset_states()
 
     def _start_clicked(self):
         if not self.input_files:
@@ -848,10 +944,244 @@ class BaseConverterPage(QWidget):
                 7: "426:240",
             }
             scale = _RES_MAP.get(idx)
-            if scale and "-vf" not in args:
+            copy_video = False
+            for pos, tok in enumerate(args):
+                if tok == "-c" and pos + 1 < len(args) and args[pos + 1] == "copy":
+                    copy_video = True
+                    break
+                if tok in ("-c:v", "-vcodec") and pos + 1 < len(args) and args[pos + 1] == "copy":
+                    copy_video = True
+                    break
+            if scale and fmt != "m3u8" and not copy_video and "-vf" not in args:
                 args = args + ["-vf", f"scale={scale}"]
 
+        if self.media_type == "audio":
+            args = self._sanitize_audio_args(fmt, args)
+
         return args
+
+    @staticmethod
+    def _replace_or_append_arg(args: list, option: str, value: str) -> list:
+        fixed = list(args)
+        for i, tok in enumerate(fixed[:-1]):
+            if tok == option:
+                fixed[i + 1] = value
+                return fixed
+        fixed.extend([option, value])
+        return fixed
+
+    def _sanitize_audio_args(self, fmt: str, args: list) -> list:
+        fixed = list(args)
+
+        audio_codec = ""
+        for i, tok in enumerate(fixed[:-1]):
+            if tok == "-c:a":
+                audio_codec = fixed[i + 1].lower()
+
+        if fmt == "m4a":
+            if audio_codec in {"pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le"}:
+                fixed = self._replace_or_append_arg(fixed, "-c:a", "aac")
+                if "-b:a" not in fixed:
+                    fixed.extend(["-b:a", "192k"])
+            if "-vn" in fixed:
+                fixed = [tok for tok in fixed if tok != "-vn"]
+            if "-map" not in fixed:
+                fixed = ["-map", "0:a", "-map", "0:v?"] + fixed
+            has_video_codec = any(tok in {"-c:v", "-vcodec"} for tok in fixed)
+            if not has_video_codec:
+                fixed.extend(["-c:v", "copy"])
+        elif fmt == "aac":
+            if audio_codec in {"alac", "flac", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le"}:
+                fixed = self._replace_or_append_arg(fixed, "-c:a", "aac")
+            if "-vn" not in fixed:
+                fixed.append("-vn")
+        elif fmt == "wav":
+            if audio_codec in {"aac", "alac", "flac", "libmp3lame", "libopus", "libvorbis"}:
+                fixed = self._replace_or_append_arg(fixed, "-c:a", "pcm_s16le")
+            if "-vn" not in fixed:
+                fixed.append("-vn")
+
+        return fixed
+
+    def _collect_media_capabilities(self) -> dict:
+        caps = {
+            "has_video": False,
+            "has_audio": False,
+            "video_codecs": set(),
+            "audio_codecs": set(),
+            "widths": [],
+            "heights": [],
+            "sample_rates": [],
+            "audio_bit_rates": [],
+            "video_bit_rates": [],
+            "extensions": set(),
+            "analyzed_count": 0,
+            "total_count": len(self.input_files),
+        }
+        for fp in self.input_files:
+            caps["extensions"].add(os.path.splitext(fp)[1].lstrip(".").lower())
+            info = self.file_media_info.get(fp, {})
+            if info:
+                caps["analyzed_count"] += 1
+            for stream in info.get("streams", []):
+                codec_type = stream.get("codec_type")
+                codec_name = (stream.get("codec_name") or "").lower()
+                if codec_type == "video":
+                    caps["has_video"] = True
+                    if codec_name:
+                        caps["video_codecs"].add(codec_name)
+                    width = stream.get("width")
+                    if isinstance(width, int):
+                        caps["widths"].append(width)
+                    height = stream.get("height")
+                    if isinstance(height, int):
+                        caps["heights"].append(height)
+                    br = stream.get("bit_rate")
+                    try:
+                        if br:
+                            caps["video_bit_rates"].append(int(br))
+                    except (TypeError, ValueError):
+                        pass
+                elif codec_type == "audio":
+                    caps["has_audio"] = True
+                    if codec_name:
+                        caps["audio_codecs"].add(codec_name)
+                    sr = stream.get("sample_rate")
+                    try:
+                        if sr:
+                            caps["sample_rates"].append(int(sr))
+                    except (TypeError, ValueError):
+                        pass
+                    br = stream.get("bit_rate")
+                    try:
+                        if br:
+                            caps["audio_bit_rates"].append(int(br))
+                    except (TypeError, ValueError):
+                        pass
+        return caps
+
+    def _preset_state_for(self, fmt: str, preset_name: str, preset_args, caps: dict) -> dict:
+        state = {"enabled": True, "recommended": False, "reason": ""}
+        if preset_args == "__custom__":
+            return state
+        if self.input_files and caps["analyzed_count"] == 0:
+            return state
+
+        name = preset_name.lower()
+        if self.media_type == "video":
+            max_width = max(caps["widths"]) if caps["widths"] else 0
+            max_height = max(caps["heights"]) if caps["heights"] else 0
+            max_pixels = max_width * max_height if max_width and max_height else 0
+            all_small = max_width and max_width <= 640
+            very_large = max_width >= 2560 or max_height >= 1440
+            has_losslessish_ext = bool(caps["extensions"] & {"mov", "mkv", "avi"})
+            has_losslessish_codec = bool(caps["video_codecs"] & {"prores", "ffv1", "huffyuv", "png"})
+            source_is_archive = has_losslessish_ext or has_losslessish_codec
+            audio_missing = caps["analyzed_count"] == caps["total_count"] and caps["has_video"] and not caps["has_audio"]
+            using_hevc_source = any(codec in {"hevc", "h265"} for codec in caps["video_codecs"])
+            using_av1_source = "av1" in caps["video_codecs"]
+
+            if "prores" in name and fmt != "mov":
+                state.update(enabled=False, reason="ProRes 仅适合 MOV 容器。")
+            elif "prores" in name and not source_is_archive:
+                state.update(enabled=False, reason="源文件不是高保真母版，不建议转成 ProRes。")
+            elif "ffv1" in name and fmt != "mkv":
+                state.update(enabled=False, reason="FFV1 存档更适合 MKV 容器。")
+            elif "无损存档" in name and not source_is_archive:
+                state.update(enabled=False, reason="当前源文件不是高保真素材，不适合做 FFV1 存档。")
+            elif "无损" in name and "ffv1" not in name and not source_is_archive:
+                state.update(enabled=False, reason="当前源文件不适合无损重编码，体积可能明显变大。")
+            elif "av1" in name and all_small:
+                state.update(enabled=False, reason="低分辨率素材不适合 AV1 慢速压缩。")
+            elif "av1" in name and fmt not in {"mkv", "webm"}:
+                state.update(enabled=False, reason="AV1 预设建议输出到 MKV 或 WebM。")
+            elif "仅视频流" in name and audio_missing:
+                state.update(enabled=False, reason="源文件已经没有音频流。")
+            elif "hevc" in name and max_width and max_width < 960:
+                state.update(enabled=False, reason="低分辨率视频使用 HEVC 收益较低。")
+            elif "hevc" in name and using_hevc_source:
+                state["recommended"] = True
+            elif "平衡压缩" in name and very_large:
+                state["recommended"] = True
+            elif "快速压缩" in name and caps["has_video"] and not very_large:
+                state["recommended"] = True
+            elif "高质量" in name and source_is_archive:
+                state["recommended"] = True
+            elif "极致压缩" in name and max_pixels and max_pixels >= 1920 * 1080:
+                state["recommended"] = True
+            elif "仅复制流" in name and (using_hevc_source or using_av1_source):
+                state["recommended"] = True
+
+        elif self.media_type == "audio":
+            max_sr = max(caps["sample_rates"]) if caps["sample_rates"] else 0
+            max_audio_br = max(caps["audio_bit_rates"]) if caps["audio_bit_rates"] else 0
+            lossless_src = bool(caps["extensions"] & {"wav", "flac", "aiff", "alac"})
+            lossy_src = bool(caps["extensions"] & {"mp3", "aac", "m4a", "ogg", "opus", "wma"})
+            low_sr = max_sr and max_sr <= 32000
+            if "apple lossless" in name and fmt != "m4a":
+                state.update(enabled=False, reason="Apple Lossless 仅适合 M4A 容器。")
+            elif "pcm 24bit" in name and max_sr and max_sr < 48000:
+                state.update(enabled=False, reason="源文件采样率较低，不适合升到 24bit PCM。")
+            elif "pcm 32bit" in name and max_sr and max_sr < 48000:
+                state.update(enabled=False, reason="源文件采样率较低，不适合升到 32bit PCM。")
+            elif "浮点" in name and not lossless_src:
+                state.update(enabled=False, reason="有损源音频不适合转浮点 PCM。")
+            elif "最高压缩" in name and not lossless_src:
+                state.update(enabled=False, reason="当前源文件不是无损音频，不适合 FLAC 高压缩。")
+            elif "保真存档" in name and not lossless_src:
+                state.update(enabled=False, reason="保真存档预设更适合无损源音频。")
+            elif "320k" in name and low_sr:
+                state.update(enabled=False, reason="低采样率音频不适合升到 320k。")
+            elif "广播后期" in name and max_sr and max_sr < 44100:
+                state.update(enabled=False, reason="低采样率音频不适合转广播后期 WAV。")
+            elif "单声道" in name and max_sr and max_sr >= 44100 and max_audio_br >= 192000:
+                state.update(enabled=False, reason="当前音频质量较高，不建议直接压到单声道低码率。")
+            elif "低码率" in name and caps["has_audio"] and max_audio_br >= 160000:
+                state["recommended"] = True
+            elif "语音" in name and max_sr and max_sr <= 32000:
+                state["recommended"] = True
+            elif "apple lossless" in name and lossless_src:
+                state["recommended"] = True
+            elif "高质量" in name and lossless_src and not low_sr:
+                state["recommended"] = True
+
+        elif self.media_type == "image":
+            ext = next(iter(caps["extensions"]), "")
+            wide = max(caps["widths"]) if caps["widths"] else 0
+            has_alpha_source = ext in {"png", "webp", "tiff", "ico"}
+            if fmt == "png" and "无压缩" in name and ext not in {"png"}:
+                state.update(enabled=False, reason="当前源文件不适合输出无压缩 PNG。")
+            elif fmt == "bmp" and "默认" in name:
+                state.update(enabled=False, reason="BMP 基本不压缩，不适合作为压缩输出。")
+            elif fmt == "jpg" and has_alpha_source and ("默认" in name or "高质量" in name or "标准" in name):
+                state.update(enabled=False, reason="源图可能带透明通道，JPG 不适合直接保留透明背景。")
+            elif fmt == "webp" and "无损" in name and ext not in {"png", "webp", "tiff"}:
+                state.update(enabled=False, reason="无损 WebP 更适合无损源图片。")
+            elif "512px" in name and wide and wide <= 512:
+                state.update(enabled=False, reason="源图尺寸已经不大，不需要再缩到 512px。")
+            elif "1280px" in name and wide and wide <= 1280:
+                state.update(enabled=False, reason="源图宽度已经不超过 1280px。")
+            elif "1920px" in name and wide and wide <= 1920:
+                state.update(enabled=False, reason="源图宽度已经不超过 1920px。")
+            elif ("q5" in name or "q8" in name or "q40" in name or "最大压缩" in name) and caps["extensions"]:
+                state["recommended"] = True
+            elif "无损 webp" in name and has_alpha_source:
+                state["recommended"] = True
+            elif "无损压缩" in name and fmt == "png" and ext == "png":
+                state["recommended"] = True
+
+        return state
+
+    def _update_preset_states(self):
+        if not hasattr(self, "args_panel"):
+            return
+        fmt = self.output_format_combo.currentText()
+        caps = self._collect_media_capabilities()
+        states = []
+        for name, preset_args in self.args_panel._cur_presets:
+            states.append(self._preset_state_for(fmt, name, preset_args, caps))
+        if states:
+            self.args_panel.set_preset_states(states)
 
     # ═══════════════════════════════════════════════════════════════
     #  LOG SYSTEM
@@ -1000,9 +1330,9 @@ class BaseConverterPage(QWidget):
 
     def _copy_log(self):
         QApplication.clipboard().setText(self.log_display.toPlainText())
-        self._btn_copy_log.setText("✔ 已复制")
+        self._btn_copy_log.setText("已复制")
         QTimer.singleShot(1500,
-            lambda: self._btn_copy_log.setText("⎘ 复制"))
+            lambda: self._btn_copy_log.setText("复制"))
 
     # ── Progress bar ─────────────────────────
     def update_overall_progress(self, idx, total, pct):
@@ -1021,119 +1351,70 @@ class BaseConverterPage(QWidget):
         self.start_conversion_button.setEnabled(ok)
 
     def _update_combo(self):
-        is_dark = getattr(self, "_is_dark", False)
-        disabled_bg = QColor(60, 60, 70)    if is_dark else QColor(210, 210, 215)
-        disabled_fg = QColor(100, 100, 110) if is_dark else QColor(150, 150, 158)
         normal_bg   = QColor(0, 0, 0, 0)
 
         for i in range(self.output_format_combo.count()):
-            fmt  = self.output_format_combo.itemText(i)
             item = self.output_format_combo.model().item(i)
-            if self.media_type == "m3u8":
-                item.setEnabled(True)
-                item.setBackground(QBrush(normal_bg))
-                continue
-
-            disable = bool(self.input_files) and all(
-                self.file_original_formats.get(fp) == fmt
-                for fp in self.input_files)
-
-            item.setEnabled(not disable)
-            if disable:
-                item.setBackground(QBrush(disabled_bg))
-                item.setForeground(QBrush(disabled_fg))
-            else:
-                item.setBackground(QBrush(normal_bg))
-                item.setData(None, Qt.ItemDataRole.ForegroundRole)
-
-            if self.output_format_combo.currentIndex() == i and disable:
-                for j in range(self.output_format_combo.count()):
-                    if self.output_format_combo.model().item(j).isEnabled():
-                        self.output_format_combo.setCurrentIndex(j)
-                        break
+            item.setEnabled(True)
+            item.setBackground(QBrush(normal_bg))
+            item.setData(None, Qt.ItemDataRole.ForegroundRole)
 
     def handle_file_info_ready(self, fp, info, err):
         if fp not in self.input_files:
             return
         if err:
-            self.log_message(f"解析失败: {os.path.basename(fp)}", "warning")
+            self.file_media_info[fp] = {}
+            self._update_combo()
+            self._update_preset_states()
             return
 
-        fmt = ""
-        # ffprobe format_name 可能是逗号分隔的多个格式，取最符合的
-        if "format" in info and "format_name" in info["format"]:
-            candidates = info["format"]["format_name"].split(",")
-            ext = os.path.splitext(fp)[1].lstrip(".").lower()
-            # 1. 优先：候选中与文件扩展名映射结果一致的
-            ext_mapped = self._map(ext)
-            for c in candidates:
-                mapped = self._map(c.strip())
-                if mapped == ext_mapped and mapped in self.output_formats_available:
-                    fmt = mapped
-                    break
-            # 2. 次选：候选中任意匹配格式列表的
-            if not fmt:
-                for c in candidates:
-                    mapped = self._map(c.strip())
-                    if mapped in self.output_formats_available:
-                        fmt = mapped
-                        break
-            # 3. 兜底：取第一个候选映射
-            if not fmt:
-                fmt = self._map(candidates[0].strip())
-        # 如果 format 没命中，尝试从 streams[0] 读 codec_name（图片常见路径）
-        if not fmt and info.get("streams"):
-            fmt = self._map(info["streams"][0].get("codec_name", ""))
-        # 最后兜底：从文件扩展名推断
-        if not fmt:
-            ext = os.path.splitext(fp)[1].lstrip(".").lower()
-            fmt = self._map(ext)
-
-        if fmt:
-            self.file_original_formats[fp] = fmt
-            name = os.path.basename(fp)
-            self.log_message(f"检测到格式: {name}  →  {fmt.upper()}", "meta")
+        self.file_media_info[fp] = info
         self._update_combo()
+        self._update_preset_states()
 
-    def _map(self, fmt):
-        M = {
-            # 视频容器
-            "mov": "mov", "qt": "mov",
-            "mp4": "mp4", "m4v": "mp4",
-            "isom": "mp4", "isom": "mp4", "iso2": "mp4",   # ISO Base Media
-            "f4v": "mp4", "f4a": "mp4",
-            "3gp": "mp4", "3g2": "mp4", "3gpp": "mp4",
-            "mkv": "mkv", "matroska": "mkv",
-            "webm": "webm",
-            "avi": "avi", "vfw": "avi",
-            "flv": "flv", "flv1": "flv",
-            "gif": "gif", "gif_pipe": "gif",
-            "hevc": "mkv", "h264": "mp4", "h265": "mkv",  # raw bitstream → 容器
-            "ts": "mp4", "mpegts": "mp4",                  # TS 流 → mp4
-            "mpeg": "avi", "mpegvideo": "avi",
-            "rm": "avi", "rmvb": "avi",                    # RealMedia → avi 兜底
-            "asf": "mkv", "wmv": "mkv",                   # WMV → mkv
-            "vob": "mp4", "dvd": "mp4",
-            # 音频
-            "mp3": "mp3", "mp2": "mp3", "mp2a": "mp3",
-            "wav": "wav", "pcm_s16le": "wav", "pcm_s16be": "wav",
-            "pcm_s24le": "wav", "pcm_s32le": "wav", "pcm_f32le": "wav",
-            "pcm": "wav",
-            "flac": "flac",
-            "aac": "aac", "m4a": "m4a", "adts": "aac",   # ADTS 裸流
-            "ogg": "ogg", "ogv": "ogg", "oga": "ogg", "vorbis": "ogg",
-            "opus": "opus",
-            "wma": "ogg", "wmav2": "ogg",                 # WMA → ogg 兜底
-            "amr": "aac", "amr_nb": "aac", "amr_wb": "aac",
-            "ac3": "aac", "eac3": "aac",
-            "dts": "flac",
-            # 图片
-            "jpeg": "jpg", "jpg": "jpg", "mjpeg": "jpg", "jpeg_pipe": "jpg",
-            "png": "png", "png_pipe": "png",
-            "webp": "webp", "webp_pipe": "webp",
-            "bmp": "bmp", "bmp_pipe": "bmp", "dib": "bmp",
-            "tiff": "tiff", "tif": "tiff", "tiff_pipe": "tiff",
-            "ico": "ico", "icon": "ico", "ico_pipe": "ico",
-            "gif_pipe": "gif",
-        }
-        return M.get(fmt.lower(), fmt.lower())
+    def set_language(self, language: str):
+        self._language = resolve_language(language or "auto")
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        if hasattr(self, "input_label"):
+            self.input_label.setText(tr(self._language, "file_list"))
+        if hasattr(self, "_file_count_lbl"):
+            self._update_file_count()
+        if hasattr(self, "select_input_files_button"):
+            self.select_input_files_button.setText(tr(self._language, "add_files"))
+            self.select_input_files_button.setToolTip(tr(self._language, "add_files_tip"))
+        if hasattr(self, "select_input_folder_button"):
+            self.select_input_folder_button.setText(tr(self._language, "add_folder"))
+            self.select_input_folder_button.setToolTip(tr(self._language, "add_folder_tip"))
+        if hasattr(self, "remove_selected_files_button"):
+            self.remove_selected_files_button.setText(tr(self._language, "remove_selected"))
+            self.remove_selected_files_button.setToolTip(tr(self._language, "remove_selected_tip"))
+        if hasattr(self, "clear_file_list_button"):
+            self.clear_file_list_button.setText(tr(self._language, "clear_list"))
+            self.clear_file_list_button.setToolTip(tr(self._language, "clear_list_tip"))
+        if hasattr(self, "output_options_label"):
+            self.output_options_label.setText(tr(self._language, "output_options"))
+        if hasattr(self, "format_label"):
+            self.format_label.setText(tr(self._language, "format"))
+        if hasattr(self, "resolution_label") and self.resolution_label is not None:
+            self.resolution_label.setText(tr(self._language, "resolution"))
+        if hasattr(self, "directory_label"):
+            self.directory_label.setText(tr(self._language, "directory"))
+        if hasattr(self, "select_output_dir_button"):
+            self.select_output_dir_button.setText(tr(self._language, "select"))
+            self.select_output_dir_button.setToolTip(tr(self._language, "select_output_dir_tip"))
+        if hasattr(self, "output_dir_edit"):
+            self.output_dir_edit.setPlaceholderText(tr(self._language, "output_dir_placeholder"))
+        if hasattr(self, "start_conversion_button"):
+            self.start_conversion_button.setText(tr(self._language, "start_convert"))
+        if hasattr(self, "cancel_conversion_button"):
+            self.cancel_conversion_button.setText(tr(self._language, "cancel"))
+        if hasattr(self, "log_section_label"):
+            self.log_section_label.setText(tr(self._language, "log"))
+        if hasattr(self, "_btn_copy_log"):
+            self._btn_copy_log.setText(tr(self._language, "copy"))
+            self._btn_copy_log.setToolTip(tr(self._language, "copy_tip"))
+        if hasattr(self, "_btn_clear_log"):
+            self._btn_clear_log.setText(tr(self._language, "clear"))
+            self._btn_clear_log.setToolTip(tr(self._language, "clear_tip"))

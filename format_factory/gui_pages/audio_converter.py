@@ -1,4 +1,4 @@
-# format_factory/gui_pages/audio_converter.py
+﻿# format_factory/gui_pages/audio_converter.py
 import os
 import shutil
 from .base_page import BaseConverterPage
@@ -19,6 +19,12 @@ class AudioConverterPage(BaseConverterPage):
         return "音频文件 (*.mp3 *.wav *.aac *.flac *.ogg *.m4a *.opus *.ncm);;所有文件 (*.*)"
 
     def _start_conversion_process(self):
+        if not self.ffmpeg_handler:
+            self.log_message("未找到 FFmpeg，请到设置下载", "error")
+            self.start_conversion_button.setEnabled(True)
+            self.cancel_conversion_button.setEnabled(False)
+            return
+
         fmt  = self.output_format_combo.currentText()
         args = self._build_args(fmt)
 

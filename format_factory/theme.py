@@ -1,4 +1,4 @@
-# format_factory/theme.py
+﻿# format_factory/theme.py
 """
 统一样式表。
   • 亮/暗两套基础色盘
@@ -15,19 +15,19 @@ LIGHT_THEME = {
     "window_bg":      "#EDEEF4",
     "card_no_img":    "rgba(255,255,255,0.92)",
     "card_img":       "rgba(255,255,255,0.18)",
-    "tp":             "#0D0D1A",
-    "ts":             "#454560",
-    "tm":             "#7070A0",
+    "tp":             "#151514",
+    "ts":             "#151514",
+    "tm":             "#4A4A49",
     "accent":         "#F97316",
     "accent_h":       "#EA580C",
     "accent_p":       "#C2410C",
     "tab_act_bg":     "#F97316",
     "tab_act_txt":    "#FFFFFF",
-    "tab_inact":      "#6B7280",
+    "tab_inact":      "#151514",
     "toggle_light_bg":  "#F97316",
     "toggle_light_txt": "#FFFFFF",
     "toggle_dark_bg":   "transparent",
-    "toggle_dark_txt":  "#6B7280",
+    "toggle_dark_txt":  "#151514",
     "toggle_dark_border": "rgba(0,0,0,0.18)",
     "cb":             "rgba(0,0,0,0.14)",
     "cf":             "#F97316",
@@ -44,7 +44,7 @@ LIGHT_THEME = {
     "scroll_h":       "rgba(0,0,0,0.26)",
     "status_bg":      "rgba(237,238,244,0.88)",
     "pop_bg":         "#FFFFFF",
-    "pop_txt":        "#1A1A2E",
+    "pop_txt":        "#151514",
     "pop_sel":        "rgba(249,115,22,0.13)",
 }
 
@@ -157,91 +157,6 @@ def _vivid_text_color(avg_hue: float, theme_name: str) -> tuple:
 def _apply_bg(t: dict, theme_name: str, bg: dict) -> dict:
     if not bg: return t
     o  = dict(t)
-    ac = bg.get("accent_hex", "")
-    dk = bg.get("is_dark",    False)
-
-    # ── 从背景平均色调生成鲜艳字色 ────────────────────────────────────
-    avg_hue = bg.get("avg_hue", -1.0)   # analyze_image_colors 返回的平均色相 0-1，无色时 -1
-
-    if avg_hue >= 0:
-        # 有明显颜色：用色相直接生成高饱和字色
-        r2, g2, b2, tp_hex = _vivid_text_color(avg_hue, theme_name)
-    else:
-        # 无色（纯黑白灰图）：退回到互补色压暗/提亮方案
-        c = bg.get("complement_hex", "")
-        if c:
-            r2, g2, b2 = _hex_rgb(c)
-            bright = (r2*299 + g2*587 + b2*114) / 1000
-            if theme_name == "dark":
-                if bright < 160:
-                    factor = min(2.2, 210 / max(bright, 1))
-                    r2 = min(255, int(r2 * factor))
-                    g2 = min(255, int(g2 * factor))
-                    b2 = min(255, int(b2 * factor))
-            else:
-                if bright > 130:
-                    factor = max(0.45, 110 / max(bright, 1))
-                    r2 = max(0, int(r2 * factor))
-                    g2 = max(0, int(g2 * factor))
-                    b2 = max(0, int(b2 * factor))
-            tp_hex = f"#{r2:02X}{g2:02X}{b2:02X}"
-        else:
-            # 完全没有颜色信息，不改变主题色
-            o["card"] = o["card_img"]
-            return o
-
-    # ── 应用字色 ─────────────────────────────────────────────────────
-    o["tp"]         = tp_hex
-    o["ts"]         = _rgba(r2, g2, b2, 0.72)
-    o["tm"]         = _rgba(r2, g2, b2, 0.50)
-    o["tab_inact"]  = _rgba(r2, g2, b2, 0.65)
-    o["cb"]         = _rgba(r2, g2, b2, 0.22)
-    o["hb"]         = tp_hex
-    o["divider"]    = _rgba(r2, g2, b2, 0.14)
-    o["scroll"]     = _rgba(r2, g2, b2, 0.18)
-    o["scroll_h"]   = _rgba(r2, g2, b2, 0.38)
-    o["btn_subtle"] = _rgba(r2, g2, b2, 0.07)
-    o["btn_hover"]  = _rgba(r2, g2, b2, 0.15)
-    o["btn_pressed"]= _rgba(r2, g2, b2, 0.24)
-    o["pop_bg"]     = "#0A0A18" if dk else "#FFFFFF"
-    o["pop_txt"]    = tp_hex
-
-    # ── accent 色：与字色保持足够色相差 ─────────────────────────────
-    if ac:
-        ar, ag, ab_ = _hex_rgb(ac)
-    elif avg_hue >= 0:
-        # 暗色：字色已偏移+30°，accent 用互补色（+180°），确保三者（背景/字/accent）各异
-        # 亮色：字色未偏移，accent 用互补色
-        if theme_name == "dark":
-            acc_hue = (avg_hue + 0.5) % 1.0   # 与字色相差 ~150°，视觉区分强
-            ar, ag, ab_ = _hsv_to_rgb(acc_hue, 0.80, 1.0)
-        else:
-            acc_hue = (avg_hue + 0.5) % 1.0
-            ar, ag, ab_ = _hsv_to_rgb(acc_hue, 0.85, 0.80)
-        ac = f"#{ar:02X}{ag:02X}{ab_:02X}"
-    else:
-        ar, ag, ab_ = _hex_rgb(t["accent"])
-
-    o["accent"]     = ac
-    o["accent_h"]   = ac
-    o["tab_act_bg"] = ac
-    o["cf"]         = ac
-    o["list_sel"]   = _rgba(ar, ag, ab_, 0.20)
-    o["pop_sel"]    = _rgba(ar, ag, ab_, 0.20)
-
-    if theme_name == "light":
-        o["toggle_light_bg"]    = ac
-        o["toggle_light_txt"]   = "#FFFFFF"
-        o["toggle_dark_bg"]     = "transparent"
-        o["toggle_dark_txt"]    = o["ts"]
-        o["toggle_dark_border"] = o["cb"]
-    else:
-        o["toggle_light_bg"]    = "transparent"
-        o["toggle_light_txt"]   = o["ts"]
-        o["toggle_dark_bg"]     = ac
-        o["toggle_dark_txt"]    = "#FFFFFF"
-        o["toggle_dark_border"] = o["cb"]
-
     o["card"] = o["card_img"]
     return o
 
@@ -254,6 +169,10 @@ def build_stylesheet(theme: dict,
         bg_colors = {}
 
     t       = _apply_bg(theme, theme_name, bg_colors) if has_bg else theme
+    if theme_name == "dark":
+        t["tp"] = "#FFFFFF"
+        t["ts"] = "#F3F4F6"
+        t["tm"] = "#D1D5DB"
     card_bg = t.get("card", t["card_img"]) if has_bg else t["card_no_img"]
 
     a   = t["accent"];   ah  = t["accent_h"];  ap  = t["accent_p"]
@@ -277,14 +196,14 @@ QTabWidget       {{ background:transparent; }}
 QTabWidget::pane {{ border:none; background:transparent; padding-top:4px; }}
 QTabBar          {{ background:transparent; qproperty-drawBase:0; }}
 QTabBar::tab {{
-    background:transparent; color:{t["tab_inact"]};
+    background:transparent; color:{tp};
     padding:8px 20px; margin:4px 2px;
-    border-radius:8px; font-weight:500; font-size:13px;
+    border-radius:8px; font-weight:700; font-size:13px;
     min-width:68px; min-height:22px; border:1px solid transparent;
 }}
 QTabBar::tab:selected {{
     background:{t["tab_act_bg"]}; color:{t["tab_act_txt"]};
-    font-weight:600; border:none;
+    font-weight:700; border:none;
 }}
 QTabBar::tab:hover:!selected {{ border:1px solid {hb}; color:{tp}; }}
 
@@ -326,18 +245,30 @@ QPushButton#danger:hover    {{ background:{t["error"]}; color:#FFFFFF; }}
 QPushButton#danger:disabled {{ color:{tm}; border-color:{cb}; }}
 
 /* ── 主题切换 ── */
-QPushButton#toggle_light {{
-    background:{tl_bg}; color:{tl_txt}; border:1px solid {t_bdr};
-    border-radius:7px; font-weight:{"600" if tl_bg!="transparent" else "500"};
+QPushButton#toggle_light,
+QPushButton#toggle_dark,
+QPushButton#toggle_auto {{
+    background:transparent; color:{ts}; border:1px solid {t_bdr};
+    border-radius:7px; font-weight:500;
     min-width:96px; min-height:32px;
 }}
-QPushButton#toggle_light:hover {{ border-color:{hb}; color:{a if tl_bg=="transparent" else tl_txt}; }}
-QPushButton#toggle_dark {{
-    background:{td_bg}; color:{td_txt}; border:1px solid {t_bdr};
-    border-radius:7px; font-weight:{"600" if td_bg!="transparent" else "500"};
+QPushButton#toggle_light:hover,
+QPushButton#toggle_dark:hover,
+QPushButton#toggle_auto:hover {{
+    border-color:{hb}; color:{tp};
+}}
+QPushButton#toggle_light_active,
+QPushButton#toggle_dark_active,
+QPushButton#toggle_auto_active {{
+    background:{a}; color:#FFFFFF; border:none;
+    border-radius:7px; font-weight:600;
     min-width:96px; min-height:32px;
 }}
-QPushButton#toggle_dark:hover  {{ border-color:{hb}; color:{a if td_bg=="transparent" else td_txt}; }}
+QPushButton#toggle_light_active:hover,
+QPushButton#toggle_dark_active:hover,
+QPushButton#toggle_auto_active:hover {{
+    background:{ah};
+}}
 
 /* ── GPU 厂商按钮（4 态 × 4 厂商）────────────────────────────── */
 /* NVIDIA  inactive */
@@ -433,6 +364,52 @@ QComboBox QAbstractItemView {{
     background:{t["pop_bg"]}; color:{t["pop_txt"]};
     border:1px solid {cb}; border-radius:8px; padding:4px;
     outline:none; selection-background-color:{t["pop_sel"]}; selection-color:{a};
+}}
+
+QCheckBox {{
+    color:{tp}; spacing:8px; font-weight:500;
+}}
+QCheckBox:disabled {{
+    color:{tm};
+}}
+QCheckBox::indicator {{
+    width:16px; height:16px;
+    border-radius:4px;
+    border:1.5px solid {cb};
+    background:transparent;
+}}
+QCheckBox::indicator:hover {{
+    border-color:{hb};
+}}
+QCheckBox::indicator:checked {{
+    background:{a};
+    border-color:{a};
+}}
+QCheckBox::indicator:checked:hover {{
+    background:{ah};
+    border-color:{ah};
+}}
+
+QCheckBox#command_line_switch {{
+    spacing:10px;
+    font-weight:600;
+}}
+QCheckBox#command_line_switch::indicator {{
+    width:44px; height:24px;
+    border-radius:12px;
+    border:1.5px solid {cb};
+    background:{t["prog_bg"]};
+}}
+QCheckBox#command_line_switch::indicator:hover {{
+    border-color:{hb};
+}}
+QCheckBox#command_line_switch::indicator:checked {{
+    background:{a};
+    border-color:{a};
+}}
+QCheckBox#command_line_switch::indicator:checked:hover {{
+    background:{ah};
+    border-color:{ah};
 }}
 
 /* ══ List ═════════════════════════════════════════════════════════ */

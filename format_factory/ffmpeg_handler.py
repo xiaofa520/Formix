@@ -1,4 +1,4 @@
-# format_factory/ffmpeg_handler.py
+﻿# format_factory/ffmpeg_handler.py
 """
 FFmpegHandler  —  serial queue, batch safe.
 
@@ -15,7 +15,7 @@ import re
 import json
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from format_factory.config import get_ffmpeg_path, get_ffprobe_path
+from format_factory.config import get_ffmpeg_path, get_ffprobe_path, get_ffplay_path
 
 
 def _is_stats_line(line: str) -> bool:
@@ -48,13 +48,16 @@ class FFmpegHandler(QObject):
         super().__init__()
         self.ffmpeg_path  = get_ffmpeg_path()
         self.ffprobe_path = get_ffprobe_path()
+        self.ffplay_path  = get_ffplay_path(required=False)
         if not self.ffmpeg_path:
             raise FileNotFoundError(
                 "FFmpeg executable not found. Please check config.")
 
         self._q           = queue.Queue()
         self._proc        = None          # current subprocess
+        self._probe_proc  = None          # current ffprobe subprocess
         self._cancel      = threading.Event()
+        self._shutdown    = threading.Event()
         self._worker      = None
         self._lock        = threading.Lock()
 
@@ -62,6 +65,18 @@ class FFmpegHandler(QObject):
     def convert_file(self, idx: int, inp: str, out: str, args: list):
         """Enqueue one task. Worker auto‑starts if idle."""
         self._q.put((idx, inp, out, args))
+        self._start_worker()
+
+    def run_ffmpeg_command(self, idx: int, args: list,
+                           input_hint: str = "", output_hint: str = ""):
+        """Run a validated ffmpeg command line without going through a shell."""
+        self._q.put(("custom", "ffmpeg", idx, args, input_hint, output_hint))
+        self._start_worker()
+
+    def run_tool_command(self, tool: str, idx: int, args: list,
+                         input_hint: str = "", output_hint: str = ""):
+        """Run a validated ffmpeg/ffprobe/ffplay command line without going through a shell."""
+        self._q.put(("custom", tool, idx, args, input_hint, output_hint))
         self._start_worker()
 
     def cancel_conversion(self):
@@ -76,12 +91,20 @@ class FFmpegHandler(QObject):
         self._cancel.set()
         with self._lock:
             if self._proc:
-                try:
-                    self._proc.terminate()
-                except Exception:
-                    pass
+                self._terminate_process(self._proc)
+
+    def shutdown(self):
+        """Stop queued work and terminate any running FFmpeg/FFprobe/FFplay process."""
+        self._shutdown.set()
+        self.cancel_conversion()
+        with self._lock:
+            if self._probe_proc:
+                self._terminate_process(self._probe_proc)
 
     def get_file_info_ffprobe(self, path: str):
+        if self._shutdown.is_set():
+            self.file_info_ready.emit(path, {}, "已关闭，已停止 FFprobe。")
+            return
         if not self.ffprobe_path:
             self.file_info_ready.emit(path, {},
                 "FFprobe not found.")
@@ -94,6 +117,8 @@ class FFmpegHandler(QObject):
 
     # ── worker ──────────────────────────────────────────────────────
     def _start_worker(self):
+        if self._shutdown.is_set():
+            return
         with self._lock:
             if self._worker and self._worker.is_alive():
                 return
@@ -109,14 +134,21 @@ class FFmpegHandler(QObject):
                 break   # nothing left — exit; next enqueue restarts
 
             if self._cancel.is_set():
-                idx, inp = task[0], task[1]
+                if isinstance(task[0], str) and task[0] == "custom":
+                    idx = task[2]
+                    inp = task[4] or "FFmpeg 命令"
+                else:
+                    idx, inp = task[0], task[1]
                 self.conversion_finished.emit(
                     idx, "cancelled",
                     f"'{os.path.basename(inp)}' 已跳过（取消中）。")
                 self._q.task_done()
                 continue
 
-            self._run(*task)
+            if isinstance(task[0], str) and task[0] == "custom":
+                self._run_custom(*task[1:])
+            else:
+                self._run(*task)
             self._q.task_done()
 
         self._cancel.clear()   # reset after queue fully drained
@@ -178,13 +210,91 @@ class FFmpegHandler(QObject):
     # ── ffmpeg ──────────────────────────────────────────────────────
     def _run(self, idx: int, inp: str, out: str, args: list):
         cmd = [self.ffmpeg_path, "-y", "-i", inp] + args + [out]
+        self._run_process("ffmpeg", idx, cmd, inp, out, inp)
 
+    def _run_custom(self, tool: str, idx: int, args: list,
+                    input_hint: str = "", output_hint: str = ""):
+        tool = (tool or "ffmpeg").lower()
+        display_input = input_hint or (tool.upper() + " 命令")
+        cleanup_input = input_hint if input_hint and os.path.isfile(input_hint) else ""
+        if tool == "ffmpeg":
+            exe = self.ffmpeg_path
+        elif tool == "ffprobe":
+            exe = self.ffprobe_path
+        else:
+            exe = self.ffplay_path
+        if not exe:
+            self.conversion_finished.emit(idx, "failure", f"找不到 {tool.upper()} 可执行文件")
+            return
+        cmd = [exe] + list(args)
+        self._run_process(tool, idx, cmd, display_input, output_hint, cleanup_input)
+
+    def _run_process(self, tool: str, idx: int, cmd: list,
+                     display_input: str, output_hint: str,
+                     cleanup_input: str):
         # Emit the full command as first log line
-        self.log_line.emit(idx, "cmd", "$ ffmpeg " + " ".join(
+        self.log_line.emit(idx, "cmd", f"$ {tool} " + " ".join(
             f'"{a}"' if " " in a else a for a in cmd[1:]))
 
-        self.conversion_started.emit(idx, inp)
+        self.conversion_started.emit(idx, display_input)
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+        if tool in {"ffprobe", "ffplay"}:
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    encoding="utf-8", errors="replace",
+                    creationflags=flags)
+                with self._lock:
+                    self._proc = proc
+                if self._cancel.is_set() or self._shutdown.is_set():
+                    self._terminate_process(proc)
+                    with self._lock:
+                        self._proc = None
+                    self.conversion_finished.emit(
+                        idx, "cancelled",
+                        f"'{os.path.basename(display_input)}' 已取消。")
+                    return
+
+                for raw in proc.stdout:
+                    if self._cancel.is_set() or self._shutdown.is_set():
+                        self._terminate_process(proc)
+                        with self._lock:
+                            self._proc = None
+                        self.conversion_finished.emit(
+                            idx, "cancelled",
+                            f"'{os.path.basename(display_input)}' 已取消。")
+                        return
+                    line = raw.rstrip()
+                    if not line:
+                        continue
+                    kind = "warn" if re.search(r"\b(error|failed|invalid|cannot|unable|not found)\b", line, re.IGNORECASE) else "meta"
+                    self.log_line.emit(idx, kind, line[:400])
+
+                proc.wait()
+                with self._lock:
+                    self._proc = None
+
+                if proc.returncode == 0:
+                    self.conversion_finished.emit(
+                        idx, "success",
+                        f"'{os.path.basename(display_input)}' 执行完成 ✓")
+                else:
+                    self.conversion_finished.emit(
+                        idx, "failure",
+                        f"'{os.path.basename(display_input)}' 失败 (code {proc.returncode})")
+            except FileNotFoundError:
+                self.conversion_finished.emit(
+                    idx, "failure", f"找不到 {tool.upper()}：{cmd[0] if cmd else ''}")
+            except Exception as exc:
+                self.conversion_finished.emit(
+                    idx, "failure", f"意外错误：{exc}")
+            finally:
+                with self._lock:
+                    self._proc = None
+            return
 
         # Compiled patterns for parsing FFmpeg stderr
         dur_re      = re.compile(r"Duration:\s*(\d{2}):(\d{2}):(\d{2})[\.,](\d+)")
@@ -215,6 +325,17 @@ class FFmpegHandler(QObject):
                 creationflags=flags)
             with self._lock:
                 self._proc = proc
+            if self._cancel.is_set() or self._shutdown.is_set():
+                self._terminate_process(proc)
+                with self._lock:
+                    self._proc = None
+                # Delete the partial output file
+                self._cleanup_output(output_hint, cleanup_input,
+                    lambda msg: self.log_line.emit(idx, "warn", msg))
+                self.conversion_finished.emit(
+                    idx, "cancelled",
+                    f"'{os.path.basename(display_input)}' 已取消。")
+                return
 
             for raw in proc.stderr:
                 line = raw.rstrip()
@@ -222,16 +343,16 @@ class FFmpegHandler(QObject):
                 if len(last_lines) > 40:
                     last_lines.pop(0)
 
-                if self._cancel.is_set():
-                    proc.terminate(); proc.wait()
+                if self._cancel.is_set() or self._shutdown.is_set():
+                    self._terminate_process(proc)
                     with self._lock:
                         self._proc = None
                     # Delete the partial output file
-                    self._cleanup_output(out, inp,
+                    self._cleanup_output(output_hint, cleanup_input,
                         lambda msg: self.log_line.emit(idx, "warn", msg))
                     self.conversion_finished.emit(
                         idx, "cancelled",
-                        f"'{os.path.basename(inp)}' 已取消。")
+                        f"'{os.path.basename(display_input)}' 已取消。")
                     return
 
                 # ── Parse & emit structured log lines ──────────────
@@ -323,7 +444,7 @@ class FFmpegHandler(QObject):
 
             if proc.returncode == 0:
                 # Even on success, verify output is not suspiciously tiny
-                verdict = self._cleanup_output(out, inp,
+                verdict = self._cleanup_output(output_hint, cleanup_input,
                     lambda msg: self.log_line.emit(idx, "warn", msg))
                 if verdict == "deleted":
                     tail = "\n".join(
@@ -331,28 +452,33 @@ class FFmpegHandler(QObject):
                         if l.strip() and not _is_stats_line(l))
                     self.conversion_finished.emit(
                         idx, "failure",
-                        f"'{os.path.basename(inp)}' 转换结果异常，输出文件已删除。\n{tail}")
+                        f"'{os.path.basename(display_input)}' 转换结果异常，输出文件已删除。\n{tail}")
                 else:
-                    self.conversion_finished.emit(
-                        idx, "success",
-                        f"'{os.path.basename(inp)}'  →  '{os.path.basename(out)}' ✓")
+                    if output_hint:
+                        msg = (
+                            f"'{os.path.basename(display_input)}'  →  "
+                            f"'{os.path.basename(output_hint)}' ✓"
+                        )
+                    else:
+                        msg = f"'{os.path.basename(display_input)}'  执行完成 ✓"
+                    self.conversion_finished.emit(idx, "success", msg)
             else:
                 # Delete the broken partial output
-                self._cleanup_output(out, inp,
+                self._cleanup_output(output_hint, cleanup_input,
                     lambda msg: self.log_line.emit(idx, "warn", msg))
                 tail = "\n".join(
                     l for l in last_lines[-15:]
                     if l.strip() and not _is_stats_line(l))
                 self.conversion_finished.emit(
                     idx, "failure",
-                    f"'{os.path.basename(inp)}' 失败 (code {proc.returncode})\n{tail}")
+                    f"'{os.path.basename(display_input)}' 失败 (code {proc.returncode})\n{tail}")
 
         except FileNotFoundError:
-            self._cleanup_output(out, inp, lambda msg: None)
+            self._cleanup_output(output_hint, cleanup_input, lambda msg: None)
             self.conversion_finished.emit(
-                idx, "failure", f"找不到 FFmpeg：{self.ffmpeg_path}")
+                idx, "failure", f"找不到 {tool.upper()}：{cmd[0] if cmd else ''}")
         except Exception as exc:
-            self._cleanup_output(out, inp, lambda msg: None)
+            self._cleanup_output(output_hint, cleanup_input, lambda msg: None)
             self.conversion_finished.emit(
                 idx, "failure", f"意外错误：{exc}")
         finally:
@@ -364,20 +490,52 @@ class FFmpegHandler(QObject):
         info, err = {}, ""
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         try:
+            if self._shutdown.is_set():
+                return
             proc = subprocess.Popen(cmd,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 encoding="utf-8", errors="replace", creationflags=flags)
+            with self._lock:
+                self._probe_proc = proc
+            if self._shutdown.is_set() or self._cancel.is_set():
+                self._terminate_process(proc)
+                err = f"FFprobe 已取消: {path}"
+                return
             out, serr = proc.communicate(timeout=15)
             if proc.returncode == 0:
                 info = json.loads(out)
             else:
                 err = f"FFprobe 错误 {proc.returncode}: {serr.strip()}"
         except subprocess.TimeoutExpired:
-            proc.kill(); proc.communicate()
+            self._terminate_process(proc)
             err = f"FFprobe 超时: {path}"
         except json.JSONDecodeError as e:
             err = f"FFprobe 输出解析失败: {e}"
         except Exception as e:
             err = f"FFprobe 意外错误: {e}"
         finally:
+            with self._lock:
+                self._probe_proc = None
             self.file_info_ready.emit(path, info, err)
+
+    @staticmethod
+    def _terminate_process(proc):
+        if not proc:
+            return
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=2)
+            return
+        except Exception:
+            pass
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=2)
+        except Exception:
+            pass

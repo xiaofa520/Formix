@@ -1,4 +1,4 @@
-# format_factory/daily_wallpaper.py
+﻿# format_factory/daily_wallpaper.py
 """
 每日壁纸服务。
 
@@ -65,7 +65,11 @@ def _purge_cache_files():
 # ── 后台下载线程 ──────────────────────────────────────────────────────
 class _FetchThread(QThread):
     """在子线程里完成 API 请求 + 图片下载，不阻塞 UI。"""
-    finished = pyqtSignal(str, str)   # (local_path, error_key)
+    finished = pyqtSignal(int, str, str)   # (request_token, local_path, error_key)
+
+    def __init__(self, request_token: int, parent=None):
+        super().__init__(parent)
+        self._request_token = request_token
 
     def run(self):
         os.makedirs(_CACHE_DIR, exist_ok=True)
@@ -79,7 +83,7 @@ class _FetchThread(QThread):
 
             img_url = data.get("url", "").strip()
             if not img_url:
-                self.finished.emit("", "no_url")
+                self.finished.emit(self._request_token, "", "no_url")
                 return
 
             # 2. 对 URL 做 percent-encoding
@@ -117,14 +121,14 @@ class _FetchThread(QThread):
             with open(_META_FILE, "w", encoding="utf-8") as f:
                 json.dump(meta, f, ensure_ascii=False, indent=2)
 
-            self.finished.emit(local_path, "")
+            self.finished.emit(self._request_token, local_path, "")
 
         except urllib.error.URLError as e:
             reason = str(e.reason).encode("ascii", "replace").decode("ascii")
-            self.finished.emit("", f"url_error:{reason}")
+            self.finished.emit(self._request_token, "", f"url_error:{reason}")
         except Exception as e:
             msg = str(e).encode("ascii", "replace").decode("ascii")
-            self.finished.emit("", f"error:{msg}")
+            self.finished.emit(self._request_token, "", f"error:{msg}")
 
 
 # ── 主服务对象 ────────────────────────────────────────────────────────
@@ -150,6 +154,8 @@ class DailyWallpaperService(QObject):
         super().__init__(parent)
         self._enabled      = False
         self._fetch_thread = None
+        self._request_token = 0
+        self._pending_refresh = False
 
         self._midnight_timer = QTimer(self)
         self._midnight_timer.setSingleShot(True)
@@ -159,12 +165,15 @@ class DailyWallpaperService(QObject):
     def start(self):
         """启用服务：有今日缓存直接用，否则重新获取；安排次日零点触发。"""
         self._enabled = True
+        self._pending_refresh = False
         self._try_use_cache_or_fetch()
         self._schedule_midnight()
 
     def stop(self):
         """禁用服务，停止零点定时器（不清缓存）。"""
         self._enabled = False
+        self._pending_refresh = False
+        self._request_token += 1
         self._midnight_timer.stop()
 
     def force_refresh(self):
@@ -174,7 +183,10 @@ class DailyWallpaperService(QObject):
           2. 重新从 API 获取并下载
         """
         _purge_cache_files()
-        self._fetch()
+        self._pending_refresh = True
+        self._request_token += 1
+        if self._fetch():
+            self._pending_refresh = False
 
     def cached_local_path(self) -> str:
         """返回今天已缓存的本地图片路径，不存在则返回空字符串。"""
@@ -198,17 +210,34 @@ class DailyWallpaperService(QObject):
             self.wallpaper_ready.emit(path)
         else:
             _purge_cache_files()   # 清除过期缓存
-            self._fetch()
+            self._pending_refresh = True
+            self._request_token += 1
+            if self._fetch():
+                self._pending_refresh = False
 
     def _fetch(self):
         if self._fetch_thread and self._fetch_thread.isRunning():
-            return
+            return False
         self.status_changed.emit("fetching")
-        self._fetch_thread = _FetchThread(self)
+        self._fetch_thread = _FetchThread(self._request_token, self)
         self._fetch_thread.finished.connect(self._on_fetch_done)
         self._fetch_thread.start()
+        return True
 
-    def _on_fetch_done(self, local_path: str, err: str):
+    def _on_fetch_done(self, request_token: int, local_path: str, err: str):
+        if self.sender() is self._fetch_thread:
+            self._fetch_thread = None
+
+        if request_token != self._request_token:
+            if self._enabled and self._pending_refresh:
+                if self._fetch():
+                    self._pending_refresh = False
+            return
+
+        self._pending_refresh = False
+        if not self._enabled:
+            return
+
         if err:
             self.status_changed.emit(f"fail:{err}")
             self.error_occurred.emit(err)
@@ -228,5 +257,8 @@ class DailyWallpaperService(QObject):
         if not self._enabled:
             return
         _purge_cache_files()
-        self._fetch()
+        self._pending_refresh = True
+        self._request_token += 1
+        if self._fetch():
+            self._pending_refresh = False
         self._schedule_midnight()

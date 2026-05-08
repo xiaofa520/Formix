@@ -1,4 +1,4 @@
-# format_factory/gui_pages/image_converter.py
+﻿# format_factory/gui_pages/image_converter.py
 import os
 from .base_page import BaseConverterPage
 
@@ -11,6 +11,12 @@ class ImageConverterPage(BaseConverterPage):
         return "图片文件 (*.jpg *.jpeg *.png *.bmp *.tiff *.webp *.ico);;所有文件 (*.*)"
 
     def _start_conversion_process(self):
+        if not self.ffmpeg_handler:
+            self.log_message("未找到 FFmpeg，请到设置下载", "error")
+            self.start_conversion_button.setEnabled(True)
+            self.cancel_conversion_button.setEnabled(False)
+            return
+
         fmt  = self.output_format_combo.currentText()
         args = self._build_args(fmt)
         for i, inp in enumerate(self.input_files):

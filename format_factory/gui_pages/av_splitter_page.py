@@ -1,4 +1,4 @@
-# format_factory/gui_pages/av_splitter_page.py
+﻿# format_factory/gui_pages/av_splitter_page.py
 """
 音视频分离 / 合成页面
   • 分离：从视频文件中提取纯视频流 或 纯音频流
@@ -18,6 +18,171 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QFont, QDragEnterEvent, QDropEvent
+from ..i18n import LANG_AUTO, LANG_EN, LANG_JA, LANG_KO, LANG_ZH_CN, LANG_ZH_TW, resolve_language, tr
+
+
+_AV_TEXT = {
+    LANG_ZH_CN: {
+        "tab_split": "分离音视频",
+        "tab_merge": "合成音视频",
+        "split_file_list": "视频文件列表",
+        "split_options": "分离选项",
+        "extract_content": "提取内容",
+        "extract_audio_only": "仅提取音频",
+        "extract_video_only": "仅提取视频（去除音频）",
+        "extract_both": "同时提取音频 + 视频",
+        "audio_format": "音频格式",
+        "video_format": "视频格式",
+        "merge_video_files": "视频文件（可多个）",
+        "merge_audio_file": "音频文件（单个，将配对给所有视频）",
+        "merge_options": "合成选项",
+        "output_format": "输出格式",
+        "audio_processing": "音频处理",
+        "copy_audio": "复制音频流（无损，推荐）",
+        "reencode_m4a": "重新编码为 M4A (AAC)",
+        "reencode_aac": "重新编码为 AAC 192k",
+        "reencode_mp3": "重新编码为 MP3 192k",
+        "reencode_flac": "重新编码为 FLAC（无损）",
+        "reencode_opus": "重新编码为 Opus 96k",
+        "choose_audio": "选择音频",
+        "clear_audio": "清除",
+        "audio_placeholder": "选择音频文件…",
+        "processing_log": "处理日志",
+        "copied": "已复制",
+        "start_split": "开始分离",
+        "start_merge": "开始合成",
+        "video_count_short_zero": "0 个",
+    },
+    LANG_ZH_TW: {
+        "tab_split": "分離音視頻",
+        "tab_merge": "合成音視頻",
+        "split_file_list": "影片檔案列表",
+        "split_options": "分離選項",
+        "extract_content": "提取內容",
+        "extract_audio_only": "僅提取音訊",
+        "extract_video_only": "僅提取影片（移除音訊）",
+        "extract_both": "同時提取音訊 + 影片",
+        "audio_format": "音訊格式",
+        "video_format": "影片格式",
+        "merge_video_files": "影片檔案（可多個）",
+        "merge_audio_file": "音訊檔案（單個，將配對給所有影片）",
+        "merge_options": "合成選項",
+        "output_format": "輸出格式",
+        "audio_processing": "音訊處理",
+        "copy_audio": "複製音訊流（無損，推薦）",
+        "reencode_m4a": "重新編碼為 M4A (AAC)",
+        "reencode_aac": "重新編碼為 AAC 192k",
+        "reencode_mp3": "重新編碼為 MP3 192k",
+        "reencode_flac": "重新編碼為 FLAC（無損）",
+        "reencode_opus": "重新編碼為 Opus 96k",
+        "choose_audio": "選擇音訊",
+        "clear_audio": "清除",
+        "audio_placeholder": "選擇音訊檔案…",
+        "processing_log": "處理日誌",
+        "copied": "已複製",
+        "start_split": "開始分離",
+        "start_merge": "開始合成",
+        "video_count_short_zero": "0 個",
+    },
+    LANG_EN: {
+        "tab_split": "Split AV",
+        "tab_merge": "Merge AV",
+        "split_file_list": "Video file list",
+        "split_options": "Split options",
+        "extract_content": "Extract content",
+        "extract_audio_only": "Extract audio only",
+        "extract_video_only": "Extract video only (remove audio)",
+        "extract_both": "Extract audio + video",
+        "audio_format": "Audio format",
+        "video_format": "Video format",
+        "merge_video_files": "Video files (multiple allowed)",
+        "merge_audio_file": "Audio file (single, paired with all videos)",
+        "merge_options": "Merge options",
+        "output_format": "Output format",
+        "audio_processing": "Audio processing",
+        "copy_audio": "Copy audio stream (lossless, recommended)",
+        "reencode_m4a": "Re-encode to M4A (AAC)",
+        "reencode_aac": "Re-encode to AAC 192k",
+        "reencode_mp3": "Re-encode to MP3 192k",
+        "reencode_flac": "Re-encode to FLAC (lossless)",
+        "reencode_opus": "Re-encode to Opus 96k",
+        "choose_audio": "Choose audio",
+        "clear_audio": "Clear",
+        "audio_placeholder": "Choose an audio file…",
+        "processing_log": "Processing log",
+        "copied": "Copied",
+        "start_split": "Start split",
+        "start_merge": "Start merge",
+        "video_count_short_zero": "0",
+    },
+    LANG_JA: {
+        "tab_split": "音声/動画を分離",
+        "tab_merge": "音声/動画を合成",
+        "split_file_list": "動画ファイル一覧",
+        "split_options": "分離オプション",
+        "extract_content": "抽出内容",
+        "extract_audio_only": "音声のみ抽出",
+        "extract_video_only": "動画のみ抽出（音声を削除）",
+        "extract_both": "音声 + 動画を同時抽出",
+        "audio_format": "音声形式",
+        "video_format": "動画形式",
+        "merge_video_files": "動画ファイル（複数可）",
+        "merge_audio_file": "音声ファイル（1つ、すべての動画に適用）",
+        "merge_options": "合成オプション",
+        "output_format": "出力形式",
+        "audio_processing": "音声処理",
+        "copy_audio": "音声ストリームをコピー（無劣化、推奨）",
+        "reencode_m4a": "M4A (AAC) に再エンコード",
+        "reencode_aac": "AAC 192k に再エンコード",
+        "reencode_mp3": "MP3 192k に再エンコード",
+        "reencode_flac": "FLAC（可逆）に再エンコード",
+        "reencode_opus": "Opus 96k に再エンコード",
+        "choose_audio": "音声を選択",
+        "clear_audio": "クリア",
+        "audio_placeholder": "音声ファイルを選択…",
+        "processing_log": "処理ログ",
+        "copied": "コピー済み",
+        "start_split": "分離開始",
+        "start_merge": "合成開始",
+        "video_count_short_zero": "0 件",
+    },
+    LANG_KO: {
+        "tab_split": "오디오/비디오 분리",
+        "tab_merge": "오디오/비디오 합치기",
+        "split_file_list": "비디오 파일 목록",
+        "split_options": "분리 옵션",
+        "extract_content": "추출 내용",
+        "extract_audio_only": "오디오만 추출",
+        "extract_video_only": "비디오만 추출(오디오 제거)",
+        "extract_both": "오디오 + 비디오 동시 추출",
+        "audio_format": "오디오 형식",
+        "video_format": "비디오 형식",
+        "merge_video_files": "비디오 파일(여러 개 가능)",
+        "merge_audio_file": "오디오 파일(1개, 모든 비디오에 적용)",
+        "merge_options": "합치기 옵션",
+        "output_format": "출력 형식",
+        "audio_processing": "오디오 처리",
+        "copy_audio": "오디오 스트림 복사(무손실, 권장)",
+        "reencode_m4a": "M4A (AAC)로 다시 인코딩",
+        "reencode_aac": "AAC 192k로 다시 인코딩",
+        "reencode_mp3": "MP3 192k로 다시 인코딩",
+        "reencode_flac": "FLAC(무손실)로 다시 인코딩",
+        "reencode_opus": "Opus 96k로 다시 인코딩",
+        "choose_audio": "오디오 선택",
+        "clear_audio": "지우기",
+        "audio_placeholder": "오디오 파일 선택…",
+        "processing_log": "처리 로그",
+        "copied": "복사됨",
+        "start_split": "분리 시작",
+        "start_merge": "합치기 시작",
+        "video_count_short_zero": "0개",
+    },
+}
+
+
+def _av_text(language: str, key: str) -> str:
+    lang = resolve_language(language or LANG_AUTO)
+    return _AV_TEXT.get(lang, _AV_TEXT[LANG_EN]).get(key, key)
 
 # ── 常量 ──────────────────────────────────────────────────────────────
 _BTN_H     = 32
@@ -26,7 +191,7 @@ _BTN_W_SM  = 80
 _BTN_W_PRI = 140
 
 # 分离：视频输出格式（仅视频流，无音频）
-VIDEO_ONLY_FMTS = ["m4a", "mp4", "mkv", "avi", "mov", "webm", "flv"]
+VIDEO_ONLY_FMTS = ["mp4", "mkv", "avi", "mov", "webm", "flv"]
 # 分离：音频输出格式
 AUDIO_ONLY_FMTS = ["m4a", "mp3", "aac", "wav", "flac", "ogg", "opus"]
 # 合成：输出容器格式
@@ -44,7 +209,6 @@ _SPLIT_VIDEO_ARGS: dict[str, list] = {
     "mov":  ["-c:v", "copy", "-an"],
     "webm": ["-c:v", "copy", "-an"],
     "flv":  ["-c:v", "copy", "-an"],
-    "m4a":  ["-c:v", "copy", "-an"],
 }
 
 # 分离：提取音频流默认参数
@@ -187,8 +351,11 @@ class _LogMixin:
 
     def _copy_log(self):
         QApplication.clipboard().setText(self._log.toPlainText())
-        self._copy_btn.setText("✔ 已复制")
-        QTimer.singleShot(1500, lambda: self._copy_btn.setText("⎘ 复制"))
+        self._copy_btn.setText(_av_text(getattr(self, "_language", LANG_AUTO), "copied"))
+        QTimer.singleShot(
+            1500,
+            lambda: self._copy_btn.setText(tr(getattr(self, "_language", LANG_AUTO), "copy")),
+        )
 
     def _build_log_card(self) -> _Card:
         card = _Card()
@@ -196,18 +363,19 @@ class _LogMixin:
         lay.setSpacing(6)
 
         hdr = QHBoxLayout()
-        hdr.addWidget(_SectionLabel("📋  处理日志"))
+        self._log_section_label = _SectionLabel("处理日志")
+        hdr.addWidget(self._log_section_label)
         hdr.addStretch()
-        self._copy_btn = QPushButton("⎘ 复制")
+        self._copy_btn = QPushButton("复制")
         self._copy_btn.setMinimumSize(64, 26); self._copy_btn.setMaximumHeight(26)
         self._copy_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._copy_btn.clicked.connect(self._copy_log)
-        clr_btn = QPushButton("✕ 清空")
-        clr_btn.setMinimumSize(64, 26); clr_btn.setMaximumHeight(26)
-        clr_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        clr_btn.clicked.connect(self._clear_log)
+        self._clear_log_btn = QPushButton("清空")
+        self._clear_log_btn.setMinimumSize(64, 26); self._clear_log_btn.setMaximumHeight(26)
+        self._clear_log_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._clear_log_btn.clicked.connect(self._clear_log)
         hdr.addWidget(self._copy_btn)
-        hdr.addWidget(clr_btn)
+        hdr.addWidget(self._clear_log_btn)
         lay.addLayout(hdr)
 
         self._log = QTextEdit()
@@ -246,6 +414,7 @@ class SplitTab(QWidget, _LogMixin):
     def __init__(self, ffmpeg_handler, parent=None):
         super().__init__(parent)
         self._handler      = ffmpeg_handler
+        self._language     = LANG_AUTO
         self._files: list  = []
         self._out_dir: str = ""
         self._tasks: list  = []   # flat list of (inp, outp, args)
@@ -269,7 +438,8 @@ class SplitTab(QWidget, _LogMixin):
         fl = fc.layout(); fl.setSpacing(8)
 
         fhdr = QHBoxLayout()
-        fhdr.addWidget(_SectionLabel("视频文件列表"))
+        self._file_section_label = _SectionLabel("视频文件列表")
+        fhdr.addWidget(self._file_section_label)
         fhdr.addStretch()
         self._cnt_lbl = QLabel("0 个文件"); self._cnt_lbl.setObjectName("section_title")
         fhdr.addWidget(self._cnt_lbl)
@@ -280,13 +450,15 @@ class SplitTab(QWidget, _LogMixin):
         fl.addWidget(self._file_list, 1)
 
         br = QHBoxLayout(); br.setSpacing(6)
-        add_btn = _mk_btn("＋ 添加文件")
-        add_btn.clicked.connect(self._select_files)
-        add_folder_btn = _mk_btn("📁 添加文件夹")
-        add_folder_btn.clicked.connect(self._select_folder)
-        rm_btn  = _mk_btn("✕ 删除选中", obj_name="danger")
-        rm_btn.clicked.connect(self._remove_files)
-        br.addWidget(add_btn); br.addWidget(add_folder_btn); br.addWidget(rm_btn); br.addStretch()
+        self._add_btn = _mk_btn("添加文件")
+        self._add_btn.clicked.connect(self._select_files)
+        self._add_folder_btn = _mk_btn("添加文件夹")
+        self._add_folder_btn.clicked.connect(self._select_folder)
+        self._rm_btn  = _mk_btn("删除选中", obj_name="danger")
+        self._rm_btn.clicked.connect(self._remove_files)
+        self._clear_btn = _mk_btn("清空列表", obj_name="danger")
+        self._clear_btn.clicked.connect(self._clear_file_list)
+        br.addWidget(self._add_btn); br.addWidget(self._add_folder_btn); br.addWidget(self._rm_btn); br.addWidget(self._clear_btn); br.addStretch()
         fl.addLayout(br)
         body.addWidget(fc, 5)
 
@@ -296,18 +468,16 @@ class SplitTab(QWidget, _LogMixin):
         # 选项卡片
         oc = _Card()
         ol = oc.layout(); ol.setSpacing(10)
-        ol.addWidget(_SectionLabel("分离选项"))
+        self._split_options_label = _SectionLabel("分离选项")
+        ol.addWidget(self._split_options_label)
         ol.addWidget(_hline())
 
         # 提取内容选择
-        ol.addWidget(_SectionLabel("提取内容"))
+        self._extract_section_label = _SectionLabel("提取内容")
+        ol.addWidget(self._extract_section_label)
         self._extract_combo = QComboBox()
         self._extract_combo.setFixedHeight(_BTN_H)
-        self._extract_combo.addItems([
-            "仅提取音频",
-            "仅提取视频（去除音频）",
-            "同时提取音频 + 视频",
-        ])
+        self._extract_combo.addItems(["", "", ""])
         self._extract_combo.setMinimumWidth(220)
         self._extract_combo.currentIndexChanged.connect(self._on_extract_changed)
         ol.addWidget(self._extract_combo)
@@ -316,7 +486,8 @@ class SplitTab(QWidget, _LogMixin):
 
         # 音频格式
         self._audio_fmt_row = QHBoxLayout()
-        self._audio_fmt_row.addWidget(_SectionLabel("音频格式"))
+        self._audio_fmt_label = _SectionLabel("音频格式")
+        self._audio_fmt_row.addWidget(self._audio_fmt_label)
         self._audio_fmt_combo = QComboBox()
         self._audio_fmt_combo.setFixedHeight(_BTN_H)
         self._audio_fmt_combo.addItems(AUDIO_ONLY_FMTS)
@@ -327,7 +498,8 @@ class SplitTab(QWidget, _LogMixin):
 
         # 视频格式
         self._video_fmt_row = QHBoxLayout()
-        self._video_fmt_row.addWidget(_SectionLabel("视频格式"))
+        self._video_fmt_label = _SectionLabel("视频格式")
+        self._video_fmt_row.addWidget(self._video_fmt_label)
         self._video_fmt_combo = QComboBox()
         self._video_fmt_combo.setFixedHeight(_BTN_H)
         self._video_fmt_combo.addItems(VIDEO_ONLY_FMTS)
@@ -340,16 +512,17 @@ class SplitTab(QWidget, _LogMixin):
 
         # 输出目录
         dir_row = QHBoxLayout(); dir_row.setSpacing(6)
-        dir_row.addWidget(_SectionLabel("输出目录"))
+        self._dir_label = _SectionLabel("输出目录")
+        dir_row.addWidget(self._dir_label)
         self._dir_edit = QLineEdit()
         self._dir_edit.setPlaceholderText("选择输出目录…")
         self._dir_edit.setReadOnly(True)
         self._dir_edit.setFixedHeight(_BTN_H)
         self._dir_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         dir_row.addWidget(self._dir_edit, 1)
-        dir_btn = _mk_btn("📁 选择", _BTN_W_SM)
-        dir_btn.clicked.connect(self._select_dir)
-        dir_row.addWidget(dir_btn)
+        self._dir_btn = _mk_btn("选择", _BTN_W_SM)
+        self._dir_btn.clicked.connect(self._select_dir)
+        dir_row.addWidget(self._dir_btn)
         ol.addLayout(dir_row)
 
         right.addWidget(oc)
@@ -386,6 +559,7 @@ class SplitTab(QWidget, _LogMixin):
 
         # 默认隐藏视频格式行（默认"仅提取音频"）
         self._on_extract_changed(0)
+        self._retranslate_ui()
 
     # ── 文件操作 ──────────────────────────────────────────────────────
     def _select_files(self):
@@ -398,7 +572,7 @@ class SplitTab(QWidget, _LogMixin):
     def _select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "选择视频文件夹")
         if not folder: return
-        exts = {"mp4","mkv","avi","mov","wmv","flv","webm","ts","m2ts","vob"}
+        exts = {"mp4","mkv","avi","mov","wmv","flv","webm","ts","m2ts","vob","m4a"}
         paths = sorted(
             os.path.join(folder, f) for f in os.listdir(folder)
             if os.path.splitext(f)[1].lstrip(".").lower() in exts)
@@ -440,6 +614,12 @@ class SplitTab(QWidget, _LogMixin):
         self._cnt_lbl.setText(f"{len(self._files)} 个文件")
         self._update_state()
 
+    def _clear_file_list(self):
+        self._files.clear()
+        self._file_list.clear()
+        self._cnt_lbl.setText("0 个文件")
+        self._update_state()
+
     def _select_dir(self):
         d = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if d:
@@ -474,6 +654,11 @@ class SplitTab(QWidget, _LogMixin):
 
     # ── 开始处理 ──────────────────────────────────────────────────────
     def _start(self):
+        if not self._handler:
+            self.log_message("未找到 FFmpeg，请到设置下载", "error")
+            self._start_btn.setEnabled(bool(self._files and self._out_dir))
+            self._cancel_btn.setEnabled(False)
+            return
         if not self._files:
             self.log_message("请先添加视频文件", "error"); return
         if not self._out_dir:
@@ -524,7 +709,7 @@ class SplitTab(QWidget, _LogMixin):
             self.log_message(f"[{idx+1}] ✔ 完成: {msg}", "success")
         elif status == "cancelled":
             self.log_message(f"[{idx+1}] 已取消", "warning")
-            self._finish_all()
+            self._finish_all(cancelled=True)
             return
         else:
             self.log_message(f"[{idx+1}] ✖ 失败: {msg}", "error")
@@ -532,11 +717,14 @@ class SplitTab(QWidget, _LogMixin):
         if self._done >= self._total:
             self._finish_all()
 
-    def _finish_all(self):
+    def _finish_all(self, cancelled: bool = False):
         self._start_btn.setEnabled(bool(self._files and self._out_dir))
         self._cancel_btn.setEnabled(False)
-        self._progress.setValue(100)
-        self.log_message("所有任务已处理完毕", "success")
+        if cancelled:
+            self._progress.setFormat(f"总进度: 已取消 ({self._done}/{self._total})")
+        else:
+            self._progress.setValue(100)
+            self.log_message("所有任务已处理完毕", "success")
 
     def _on_file_info(self, fp: str, info: dict, err: str):
         if fp not in self._files: return
@@ -553,6 +741,43 @@ class SplitTab(QWidget, _LogMixin):
 
     def set_theme(self, mode: str, bg_colors: dict = None):
         self._is_dark = (mode == "dark")
+
+    def set_language(self, language: str):
+        self._language = resolve_language(language or LANG_AUTO)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        self._file_section_label.setText(_av_text(self._language, "split_file_list"))
+        self._cnt_lbl.setText(
+            tr(self._language, "file_count", count=len(self._files))
+            if self._files else tr(self._language, "file_count_zero")
+        )
+        self._add_btn.setText(tr(self._language, "add_files"))
+        self._add_folder_btn.setText(tr(self._language, "add_folder"))
+        self._rm_btn.setText(tr(self._language, "remove_selected"))
+        self._clear_btn.setText(tr(self._language, "clear_list"))
+        self._split_options_label.setText(_av_text(self._language, "split_options"))
+        self._extract_section_label.setText(_av_text(self._language, "extract_content"))
+        self._extract_combo.blockSignals(True)
+        current = self._extract_combo.currentIndex()
+        self._extract_combo.clear()
+        self._extract_combo.addItems([
+            _av_text(self._language, "extract_audio_only"),
+            _av_text(self._language, "extract_video_only"),
+            _av_text(self._language, "extract_both"),
+        ])
+        self._extract_combo.setCurrentIndex(max(0, current))
+        self._extract_combo.blockSignals(False)
+        self._audio_fmt_label.setText(_av_text(self._language, "audio_format"))
+        self._video_fmt_label.setText(_av_text(self._language, "video_format"))
+        self._dir_label.setText(tr(self._language, "directory"))
+        self._dir_btn.setText(tr(self._language, "select"))
+        self._dir_edit.setPlaceholderText(tr(self._language, "output_dir_placeholder"))
+        self._start_btn.setText(_av_text(self._language, "start_split"))
+        self._cancel_btn.setText(tr(self._language, "cancel"))
+        self._log_section_label.setText(_av_text(self._language, "processing_log"))
+        self._copy_btn.setText(tr(self._language, "copy"))
+        self._clear_log_btn.setText(tr(self._language, "clear"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -571,6 +796,7 @@ class MergeTab(QWidget, _LogMixin):
     def __init__(self, ffmpeg_handler, parent=None):
         super().__init__(parent)
         self._handler        = ffmpeg_handler
+        self._language       = LANG_AUTO
         self._video_files: list = []
         self._audio_file: str   = ""
         self._out_dir: str      = ""
@@ -594,7 +820,8 @@ class MergeTab(QWidget, _LogMixin):
         vc = _Card()
         vl = vc.layout(); vl.setSpacing(6)
         vhdr = QHBoxLayout()
-        vhdr.addWidget(_SectionLabel("视频文件（可多个）"))
+        self._video_section_label = _SectionLabel("视频文件（可多个）")
+        vhdr.addWidget(self._video_section_label)
         vhdr.addStretch()
         self._v_cnt = QLabel("0 个"); self._v_cnt.setObjectName("section_title")
         vhdr.addWidget(self._v_cnt)
@@ -606,18 +833,21 @@ class MergeTab(QWidget, _LogMixin):
         vl.addWidget(self._v_list, 1)
 
         vbr = QHBoxLayout(); vbr.setSpacing(6)
-        v_add = _mk_btn("＋ 添加视频")
-        v_add.clicked.connect(self._select_video)
-        v_rm  = _mk_btn("✕ 删除选中", obj_name="danger")
-        v_rm.clicked.connect(self._remove_video)
-        vbr.addWidget(v_add); vbr.addWidget(v_rm); vbr.addStretch()
+        self._v_add = _mk_btn("添加视频")
+        self._v_add.clicked.connect(self._select_video)
+        self._v_rm  = _mk_btn("删除选中", obj_name="danger")
+        self._v_rm.clicked.connect(self._remove_video)
+        self._v_clear = _mk_btn("清空列表", obj_name="danger")
+        self._v_clear.clicked.connect(self._clear_video_list)
+        vbr.addWidget(self._v_add); vbr.addWidget(self._v_rm); vbr.addWidget(self._v_clear); vbr.addStretch()
         vl.addLayout(vbr)
         left.addWidget(vc, 3)
 
         # 音频（单个）
         ac = _Card()
         al = ac.layout(); al.setSpacing(6)
-        al.addWidget(_SectionLabel("音频文件（单个，将配对给所有视频）"))
+        self._audio_section_label = _SectionLabel("音频文件（单个，将配对给所有视频）")
+        al.addWidget(self._audio_section_label)
 
         self._a_edit = QLineEdit()
         self._a_edit.setPlaceholderText("选择音频文件…")
@@ -626,11 +856,11 @@ class MergeTab(QWidget, _LogMixin):
         al.addWidget(self._a_edit)
 
         abr = QHBoxLayout(); abr.setSpacing(6)
-        a_add = _mk_btn("选择音频")
-        a_add.clicked.connect(self._select_audio)
-        a_rm  = _mk_btn("✕ 清除", obj_name="danger")
-        a_rm.clicked.connect(self._clear_audio)
-        abr.addWidget(a_add); abr.addWidget(a_rm); abr.addStretch()
+        self._audio_add_btn = _mk_btn("选择音频")
+        self._audio_add_btn.clicked.connect(self._select_audio)
+        self._audio_clear_btn  = _mk_btn("清除", obj_name="danger")
+        self._audio_clear_btn.clicked.connect(self._clear_audio)
+        abr.addWidget(self._audio_add_btn); abr.addWidget(self._audio_clear_btn); abr.addStretch()
         al.addLayout(abr)
         left.addWidget(ac, 1)
 
@@ -641,12 +871,14 @@ class MergeTab(QWidget, _LogMixin):
 
         oc = _Card()
         ol = oc.layout(); ol.setSpacing(10)
-        ol.addWidget(_SectionLabel("合成选项"))
+        self._merge_options_label = _SectionLabel("合成选项")
+        ol.addWidget(self._merge_options_label)
         ol.addWidget(_hline())
 
         # 输出格式
         fmt_row = QHBoxLayout(); fmt_row.setSpacing(8)
-        fmt_row.addWidget(_SectionLabel("输出格式"))
+        self._fmt_label = _SectionLabel("输出格式")
+        fmt_row.addWidget(self._fmt_label)
         self._fmt_combo = QComboBox()
         self._fmt_combo.setFixedHeight(_BTN_H)
         self._fmt_combo.addItems(MERGE_FMTS)
@@ -655,17 +887,11 @@ class MergeTab(QWidget, _LogMixin):
         ol.addLayout(fmt_row)
 
         # 音频处理选项
-        ol.addWidget(_SectionLabel("音频处理"))
+        self._audio_mode_label = _SectionLabel("音频处理")
+        ol.addWidget(self._audio_mode_label)
         self._audio_mode_combo = QComboBox()
         self._audio_mode_combo.setFixedHeight(_BTN_H)
-        self._audio_mode_combo.addItems([
-            "复制音频流（无损，推荐）",
-            "重新编码为 M4A (AAC)",
-            "重新编码为 AAC 192k",
-            "重新编码为 MP3 192k",
-            "重新编码为 FLAC（无损）",
-            "重新编码为 Opus 96k",
-        ])
+        self._audio_mode_combo.addItems(["", "", "", "", "", ""])
         self._audio_mode_combo.setMinimumWidth(220)
         ol.addWidget(self._audio_mode_combo)
 
@@ -673,16 +899,17 @@ class MergeTab(QWidget, _LogMixin):
 
         # 输出目录
         dir_row = QHBoxLayout(); dir_row.setSpacing(6)
-        dir_row.addWidget(_SectionLabel("输出目录"))
+        self._dir_label = _SectionLabel("输出目录")
+        dir_row.addWidget(self._dir_label)
         self._dir_edit = QLineEdit()
         self._dir_edit.setPlaceholderText("选择输出目录…")
         self._dir_edit.setReadOnly(True)
         self._dir_edit.setFixedHeight(_BTN_H)
         self._dir_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         dir_row.addWidget(self._dir_edit, 1)
-        dir_btn = _mk_btn("📁 选择", _BTN_W_SM)
-        dir_btn.clicked.connect(self._select_dir)
-        dir_row.addWidget(dir_btn)
+        self._dir_btn = _mk_btn("选择", _BTN_W_SM)
+        self._dir_btn.clicked.connect(self._select_dir)
+        dir_row.addWidget(self._dir_btn)
         ol.addLayout(dir_row)
 
         right.addWidget(oc)
@@ -715,6 +942,7 @@ class MergeTab(QWidget, _LogMixin):
         root.addLayout(body, 3)
 
         root.addWidget(self._build_log_card(), 2)
+        self._retranslate_ui()
 
     # ── 文件操作 ──────────────────────────────────────────────────────
     def _select_video(self):
@@ -749,6 +977,12 @@ class MergeTab(QWidget, _LogMixin):
                 self._video_files.pop(row)
             self._v_list.takeItem(row)
         self._v_cnt.setText(f"{len(self._video_files)} 个")
+        self._update_state()
+
+    def _clear_video_list(self):
+        self._video_files.clear()
+        self._v_list.clear()
+        self._v_cnt.setText("0 个")
         self._update_state()
 
     def _select_audio(self):
@@ -820,6 +1054,11 @@ class MergeTab(QWidget, _LogMixin):
 
     # ── 开始处理 ──────────────────────────────────────────────────────
     def _start(self):
+        if not self._handler:
+            self.log_message("未找到 FFmpeg，请到设置下载", "error")
+            self._start_btn.setEnabled(bool(self._video_files and self._audio_file and self._out_dir))
+            self._cancel_btn.setEnabled(False)
+            return
         if not self._video_files:
             self.log_message("请先添加视频文件", "error"); return
         if not self._audio_file:
@@ -861,21 +1100,63 @@ class MergeTab(QWidget, _LogMixin):
             self.log_message(f"[{idx+1}] ✔ 完成: {msg}", "success")
         elif status == "cancelled":
             self.log_message(f"[{idx+1}] 已取消", "warning")
-            self._finish_all(); return
+            self._finish_all(cancelled=True); return
         else:
             self.log_message(f"[{idx+1}] ✖ 失败: {msg}", "error")
         if self._done >= self._total:
             self._finish_all()
 
-    def _finish_all(self):
+    def _finish_all(self, cancelled: bool = False):
         self._start_btn.setEnabled(
             bool(self._video_files and self._audio_file and self._out_dir))
         self._cancel_btn.setEnabled(False)
-        self._progress.setValue(100)
-        self.log_message("所有任务已处理完毕", "success")
+        if cancelled:
+            self._progress.setFormat(f"总进度: 已取消 ({self._done}/{self._total})")
+        else:
+            self._progress.setValue(100)
+            self.log_message("所有任务已处理完毕", "success")
 
     def set_theme(self, mode: str, bg_colors: dict = None):
         self._is_dark = (mode == "dark")
+
+    def set_language(self, language: str):
+        self._language = resolve_language(language or LANG_AUTO)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        self._video_section_label.setText(_av_text(self._language, "merge_video_files"))
+        self._v_cnt.setText(_av_text(self._language, "video_count_short_zero") if not self._video_files else str(len(self._video_files)))
+        self._v_add.setText(tr(self._language, "add_files"))
+        self._v_rm.setText(tr(self._language, "remove_selected"))
+        self._v_clear.setText(tr(self._language, "clear_list"))
+        self._audio_section_label.setText(_av_text(self._language, "merge_audio_file"))
+        self._a_edit.setPlaceholderText(_av_text(self._language, "audio_placeholder"))
+        self._audio_add_btn.setText(_av_text(self._language, "choose_audio"))
+        self._audio_clear_btn.setText(_av_text(self._language, "clear_audio"))
+        self._merge_options_label.setText(_av_text(self._language, "merge_options"))
+        self._fmt_label.setText(_av_text(self._language, "output_format"))
+        self._audio_mode_label.setText(_av_text(self._language, "audio_processing"))
+        self._audio_mode_combo.blockSignals(True)
+        current = self._audio_mode_combo.currentIndex()
+        self._audio_mode_combo.clear()
+        self._audio_mode_combo.addItems([
+            _av_text(self._language, "copy_audio"),
+            _av_text(self._language, "reencode_m4a"),
+            _av_text(self._language, "reencode_aac"),
+            _av_text(self._language, "reencode_mp3"),
+            _av_text(self._language, "reencode_flac"),
+            _av_text(self._language, "reencode_opus"),
+        ])
+        self._audio_mode_combo.setCurrentIndex(max(0, current))
+        self._audio_mode_combo.blockSignals(False)
+        self._dir_label.setText(tr(self._language, "directory"))
+        self._dir_btn.setText(tr(self._language, "select"))
+        self._dir_edit.setPlaceholderText(tr(self._language, "output_dir_placeholder"))
+        self._start_btn.setText(_av_text(self._language, "start_merge"))
+        self._cancel_btn.setText(tr(self._language, "cancel"))
+        self._log_section_label.setText(_av_text(self._language, "processing_log"))
+        self._copy_btn.setText(tr(self._language, "copy"))
+        self._clear_log_btn.setText(tr(self._language, "clear"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -898,6 +1179,7 @@ class AVSplitterPage(QWidget):
         super().__init__(parent)
         self._handler   = ffmpeg_handler
         self._is_dark   = False
+        self._language  = LANG_AUTO
         self._batch_page = None   # 当前活动子页（由 MainWindow 无需关心，内部自管）
 
         self._init_ui()
@@ -958,3 +1240,10 @@ class AVSplitterPage(QWidget):
         self._is_dark = (mode == "dark")
         self.split_tab.set_theme(mode, bg_colors)
         self.merge_tab.set_theme(mode, bg_colors)
+
+    def set_language(self, language: str):
+        self._language = resolve_language(language or LANG_AUTO)
+        self.split_tab.set_language(self._language)
+        self.merge_tab.set_language(self._language)
+        self._tabs.setTabText(0, _av_text(self._language, "tab_split"))
+        self._tabs.setTabText(1, _av_text(self._language, "tab_merge"))

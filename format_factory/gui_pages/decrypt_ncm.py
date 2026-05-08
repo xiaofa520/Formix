@@ -1,4 +1,4 @@
-import struct
+﻿import struct
 import json
 import base64
 from Crypto.Cipher import AES

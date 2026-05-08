@@ -1,4 +1,4 @@
-# format_factory/gui_pages/m3u8_downloader.py
+﻿# format_factory/gui_pages/m3u8_downloader.py
 import os
 from PyQt6.QtWidgets import (
     QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -11,10 +11,116 @@ from .base_page import (BaseConverterPage, CardWidget, SectionLabel,
                         DropFileList, AnimatedProgressBar, ArgsPanel,
                         _BTN_H, _BTN_W, _BTN_W_SM, _BTN_W_PRI,
                         _CTRL_H, _COMBO_W)
+from ..i18n import LANG_AUTO, LANG_EN, LANG_JA, LANG_KO, LANG_ZH_CN, LANG_ZH_TW, resolve_language, tr
+
+
+_M3U8_TEXT = {
+    LANG_ZH_CN: {
+        "source": "M3U8 来源",
+        "address": "地址 / 路径",
+        "placeholder": "输入 M3U8 URL 或本地 .m3u8 文件路径…",
+        "pick_local": "选择本地 .m3u8 文件",
+        "options": "输出选项",
+        "format": "格式",
+        "directory": "目录",
+        "select": "选择",
+        "select_tip": "选择保存目录",
+        "start": "开始下载/转换",
+        "log": "转换日志",
+        "copy_tip": "复制全部日志到剪贴板",
+        "clear_tip": "清空日志",
+        "missing_ffmpeg": "未找到 FFmpeg，请到设置下载",
+        "missing_source": "请输入 M3U8 URL 或选择本地文件",
+        "pick_title": "选择本地 M3U8 文件",
+        "filter": "M3U8 文件 (*.m3u8);;所有文件 (*.*)",
+    },
+    LANG_ZH_TW: {
+        "source": "M3U8 來源",
+        "address": "地址 / 路徑",
+        "placeholder": "輸入 M3U8 URL 或本地 .m3u8 檔案路徑…",
+        "pick_local": "選擇本地 .m3u8 檔案",
+        "options": "輸出選項",
+        "format": "格式",
+        "directory": "目錄",
+        "select": "選擇",
+        "select_tip": "選擇儲存目錄",
+        "start": "開始下載/轉換",
+        "log": "轉換日誌",
+        "copy_tip": "複製全部日誌到剪貼簿",
+        "clear_tip": "清空日誌",
+        "missing_ffmpeg": "未找到 FFmpeg，請到設定下載",
+        "missing_source": "請輸入 M3U8 URL 或選擇本地檔案",
+        "pick_title": "選擇本地 M3U8 檔案",
+        "filter": "M3U8 檔案 (*.m3u8);;所有檔案 (*.*)",
+    },
+    LANG_EN: {
+        "source": "M3U8 Source",
+        "address": "URL / Path",
+        "placeholder": "Enter an M3U8 URL or a local .m3u8 path…",
+        "pick_local": "Choose local .m3u8 file",
+        "options": "Output options",
+        "format": "Format",
+        "directory": "Directory",
+        "select": "Select",
+        "select_tip": "Choose output directory",
+        "start": "Download / Convert",
+        "log": "Conversion log",
+        "copy_tip": "Copy all logs to clipboard",
+        "clear_tip": "Clear log",
+        "missing_ffmpeg": "FFmpeg not found. Please download it from Settings.",
+        "missing_source": "Enter an M3U8 URL or choose a local file.",
+        "pick_title": "Choose local M3U8 file",
+        "filter": "M3U8 files (*.m3u8);;All files (*.*)",
+    },
+    LANG_JA: {
+        "source": "M3U8 ソース",
+        "address": "URL / パス",
+        "placeholder": "M3U8 URL またはローカル .m3u8 パスを入力…",
+        "pick_local": "ローカル .m3u8 ファイルを選択",
+        "options": "出力オプション",
+        "format": "形式",
+        "directory": "保存先",
+        "select": "選択",
+        "select_tip": "出力先フォルダを選択",
+        "start": "ダウンロード / 変換",
+        "log": "変換ログ",
+        "copy_tip": "ログをクリップボードへコピー",
+        "clear_tip": "ログを消去",
+        "missing_ffmpeg": "FFmpeg が見つかりません。設定からダウンロードしてください。",
+        "missing_source": "M3U8 URL を入力するか、ローカルファイルを選択してください。",
+        "pick_title": "ローカル M3U8 ファイルを選択",
+        "filter": "M3U8 ファイル (*.m3u8);;すべてのファイル (*.*)",
+    },
+    LANG_KO: {
+        "source": "M3U8 소스",
+        "address": "URL / 경로",
+        "placeholder": "M3U8 URL 또는 로컬 .m3u8 경로를 입력하세요…",
+        "pick_local": "로컬 .m3u8 파일 선택",
+        "options": "출력 옵션",
+        "format": "형식",
+        "directory": "저장 위치",
+        "select": "선택",
+        "select_tip": "출력 폴더 선택",
+        "start": "다운로드 / 변환",
+        "log": "변환 로그",
+        "copy_tip": "모든 로그를 클립보드에 복사",
+        "clear_tip": "로그 지우기",
+        "missing_ffmpeg": "FFmpeg를 찾을 수 없습니다. 설정에서 다운로드하세요.",
+        "missing_source": "M3U8 URL을 입력하거나 로컬 파일을 선택하세요.",
+        "pick_title": "로컬 M3U8 파일 선택",
+        "filter": "M3U8 파일 (*.m3u8);;모든 파일 (*.*)",
+    },
+}
+
+
+def _m3u8_text(language: str, key: str) -> str:
+    lang = resolve_language(language or LANG_AUTO)
+    return _M3U8_TEXT.get(lang, _M3U8_TEXT[LANG_EN]).get(key, key)
 
 
 class M3U8DownloaderPage(BaseConverterPage):
     def __init__(self, ffmpeg_handler=None, parent=None):
+        self._language = LANG_AUTO
         super().__init__("m3u8", ffmpeg_handler, parent)
 
     # Override _init_ui completely — different input widget
@@ -36,20 +142,20 @@ class M3U8DownloaderPage(BaseConverterPage):
         in_card = CardWidget()
         il = in_card.layout()
         il.setSpacing(10)
-        il.addWidget(SectionLabel("M3U8 来源"))
+        self.source_section_label = SectionLabel("M3U8 来源")
+        il.addWidget(self.source_section_label)
 
         url_row = QHBoxLayout(); url_row.setSpacing(8)
-        url_lbl = QLabel("地址 / 路径")
-        url_lbl.setObjectName("row_label")
-        url_lbl.setFixedWidth(72)
+        self.url_lbl = QLabel("地址 / 路径")
+        self.url_lbl.setObjectName("row_label")
+        self.url_lbl.setFixedWidth(72)
         self.m3u8_url_edit = QLineEdit()
         self.m3u8_url_edit.setMinimumHeight(_CTRL_H)
-        self.m3u8_url_edit.setPlaceholderText(
-            "输入 M3U8 URL 或本地 .m3u8 文件路径…")
+        self.m3u8_url_edit.setPlaceholderText("输入 M3U8 URL 或本地 .m3u8 文件路径…")
         self.m3u8_url_edit.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.m3u8_url_edit.textChanged.connect(self._update_src)
-        url_row.addWidget(url_lbl)
+        url_row.addWidget(self.url_lbl)
         url_row.addWidget(self.m3u8_url_edit, 1)
         il.addLayout(url_row)
 
@@ -84,11 +190,13 @@ class M3U8DownloaderPage(BaseConverterPage):
         opt_card = CardWidget()
         ol = opt_card.layout()
         ol.setSpacing(10)
-        ol.addWidget(SectionLabel("输出选项"))
+        self.output_options_label = SectionLabel("输出选项")
+        ol.addWidget(self.output_options_label)
 
         # 格式行
         fmt_row = QHBoxLayout(); fmt_row.setSpacing(8)
-        fmt_row.addWidget(SectionLabel("格式"))
+        self.format_label = SectionLabel("格式")
+        fmt_row.addWidget(self.format_label)
         self.output_format_combo = QComboBox()
         self.output_format_combo.setMinimumSize(_COMBO_W, _CTRL_H)
         self.output_format_combo.setSizePolicy(
@@ -101,7 +209,8 @@ class M3U8DownloaderPage(BaseConverterPage):
 
         # 目录行
         dir_row = QHBoxLayout(); dir_row.setSpacing(6)
-        dir_row.addWidget(SectionLabel("目录"))
+        self.directory_label = SectionLabel("目录")
+        dir_row.addWidget(self.directory_label)
         self.output_dir_edit = QLineEdit()
         self.output_dir_edit.setMinimumHeight(_CTRL_H)
         self.output_dir_edit.setPlaceholderText("选择保存目录…")
@@ -131,7 +240,7 @@ class M3U8DownloaderPage(BaseConverterPage):
         cl.setSpacing(8)
 
         ar = QHBoxLayout(); ar.setSpacing(8)
-        self.start_conversion_button = QPushButton("▶  开始下载/转换")
+        self.start_conversion_button = QPushButton("开始下载/转换")
         self.start_conversion_button.setObjectName("primary")
         self.start_conversion_button.setEnabled(False)
         self.start_conversion_button.setMinimumSize(_BTN_W_PRI, _BTN_H)
@@ -139,7 +248,7 @@ class M3U8DownloaderPage(BaseConverterPage):
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.start_conversion_button.clicked.connect(self._start_clicked)
 
-        self.cancel_conversion_button = QPushButton("⏹  取消")
+        self.cancel_conversion_button = QPushButton("取消")
         self.cancel_conversion_button.setObjectName("danger")
         self.cancel_conversion_button.setEnabled(False)
         self.cancel_conversion_button.setMinimumSize(_BTN_W_SM, _BTN_H)
@@ -166,10 +275,11 @@ class M3U8DownloaderPage(BaseConverterPage):
         ll.setSpacing(6)
 
         log_header = QHBoxLayout()
-        log_header.addWidget(SectionLabel("📋  转换日志"))
+        self.log_section_label = SectionLabel("转换日志")
+        log_header.addWidget(self.log_section_label)
         log_header.addStretch()
 
-        self._btn_copy_log = QPushButton("⎘ 复制")
+        self._btn_copy_log = QPushButton("复制")
         self._btn_copy_log.setMinimumSize(64, 26)
         self._btn_copy_log.setMaximumHeight(26)
         self._btn_copy_log.setSizePolicy(
@@ -177,7 +287,7 @@ class M3U8DownloaderPage(BaseConverterPage):
         self._btn_copy_log.setToolTip("复制全部日志到剪贴板")
         self._btn_copy_log.clicked.connect(self._copy_log)
 
-        self._btn_clear_log = QPushButton("✕ 清空")
+        self._btn_clear_log = QPushButton("清空")
         self._btn_clear_log.setMinimumSize(64, 26)
         self._btn_clear_log.setMaximumHeight(26)
         self._btn_clear_log.setSizePolicy(
@@ -212,10 +322,11 @@ class M3U8DownloaderPage(BaseConverterPage):
         root.addWidget(log_card, 3)
 
         self._update_src()
+        self._retranslate_ui()
 
     # ── helpers ──────────────────────────────────────────────────────
     def _get_file_filter(self):
-        return "M3U8 文件 (*.m3u8);;所有文件 (*.*)"
+        return _m3u8_text(self._language, "filter")
 
     def _update_src(self):
         val = (self.m3u8_url_edit.text().strip()
@@ -225,13 +336,18 @@ class M3U8DownloaderPage(BaseConverterPage):
 
     def _pick_local(self):
         p, _ = QFileDialog.getOpenFileName(
-            self, "选择本地 M3U8 文件", "", self._get_file_filter())
+            self, _m3u8_text(self._language, "pick_title"), "", self._get_file_filter())
         if p:
             self.m3u8_url_edit.setText(p)
 
     def _start_conversion_process(self):
+        if not self.ffmpeg_handler:
+            self.log_message(_m3u8_text(self._language, "missing_ffmpeg"), "error")
+            self.start_conversion_button.setEnabled(True)
+            self.cancel_conversion_button.setEnabled(False)
+            return
         if not self.input_files or not self.input_files[0]:
-            self.log_message("请输入 M3U8 URL 或选择本地文件", "error")
+            self.log_message(_m3u8_text(self._language, "missing_source"), "error")
             self.start_conversion_button.setEnabled(True)
             self.cancel_conversion_button.setEnabled(False)
             return
@@ -278,3 +394,37 @@ class M3U8DownloaderPage(BaseConverterPage):
             if hasattr(self, "m3u8_url_edit") else False)
         self.start_conversion_button.setEnabled(
             has_src and bool(self.output_dir))
+
+    def set_language(self, language: str):
+        self._language = resolve_language(language or LANG_AUTO)
+        super().set_language(language)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        if hasattr(self, "source_section_label"):
+            self.source_section_label.setText(_m3u8_text(self._language, "source"))
+        if hasattr(self, "url_lbl"):
+            self.url_lbl.setText(_m3u8_text(self._language, "address"))
+        if hasattr(self, "m3u8_url_edit"):
+            self.m3u8_url_edit.setPlaceholderText(_m3u8_text(self._language, "placeholder"))
+        if hasattr(self, "select_local_m3u8_button"):
+            self.select_local_m3u8_button.setText(_m3u8_text(self._language, "pick_local"))
+        if hasattr(self, "output_options_label"):
+            self.output_options_label.setText(_m3u8_text(self._language, "options"))
+        if hasattr(self, "format_label"):
+            self.format_label.setText(_m3u8_text(self._language, "format"))
+        if hasattr(self, "directory_label"):
+            self.directory_label.setText(_m3u8_text(self._language, "directory"))
+        if hasattr(self, "select_output_dir_button"):
+            self.select_output_dir_button.setText(_m3u8_text(self._language, "select"))
+            self.select_output_dir_button.setToolTip(_m3u8_text(self._language, "select_tip"))
+        if hasattr(self, "output_dir_edit"):
+            self.output_dir_edit.setPlaceholderText(tr(self._language, "output_dir_placeholder"))
+        if hasattr(self, "start_conversion_button"):
+            self.start_conversion_button.setText(_m3u8_text(self._language, "start"))
+        if hasattr(self, "log_section_label"):
+            self.log_section_label.setText(_m3u8_text(self._language, "log"))
+        if hasattr(self, "_btn_copy_log"):
+            self._btn_copy_log.setToolTip(_m3u8_text(self._language, "copy_tip"))
+        if hasattr(self, "_btn_clear_log"):
+            self._btn_clear_log.setToolTip(_m3u8_text(self._language, "clear_tip"))
