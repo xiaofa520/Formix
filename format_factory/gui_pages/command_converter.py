@@ -3,8 +3,8 @@ import platform
 import re
 import shlex
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QKeySequence, QTextCharFormat, QTextCursor
+from PyQt6.QtCore import QMimeData, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QInputMethodEvent, QKeySequence, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import QTextEdit, QVBoxLayout, QWidget
 
 from ..i18n import resolve_language, tr
@@ -20,6 +20,10 @@ TXT_BLOCKED = (
 TXT_MISSING_FFMPEG = "FFmpeg not found. Please download it from Settings."
 TXT_MISSING_FFPROBE = "FFprobe not found. Please download it from Settings."
 TXT_MISSING_FFPLAY = "FFplay not found. Please download it from Settings."
+TXT_MISSING_SUITE = (
+    "FFmpeg is not installed. Please download the FFmpeg bundle from Settings first "
+    "(includes ffmpeg / ffplay / ffprobe)."
+)
 TXT_READY = (
     "Formix 命令台\n"
     "仅支持 ffmpeg / ffplay / ffprobe 命令。\n"
@@ -262,6 +266,47 @@ class TerminalEdit(QTextEdit):
             cursor.setPosition(max(prompt_pos, len(self.toPlainText())))
             self.setTextCursor(cursor)
 
+    def _set_cursor_to_input_end(self):
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        cursor.setPosition(len(self.toPlainText()))
+        self.setTextCursor(cursor)
+
+    @staticmethod
+    def _quote_terminal_path(path: str) -> str:
+        if not path:
+            return ""
+        normalized = path.replace("\\", "/")
+        escaped = normalized.replace('"', '\\"')
+        return f'"{escaped}"'
+
+    def _build_drop_text(self, mime: QMimeData) -> str:
+        if mime.hasUrls():
+            parts = []
+            for url in mime.urls():
+                if url.isLocalFile():
+                    parts.append(self._quote_terminal_path(url.toLocalFile()))
+                else:
+                    text = url.toString()
+                    if text:
+                        parts.append(text)
+            return " ".join(part for part in parts if part)
+        if mime.hasText():
+            return mime.text().replace("\r\n", "\n").replace("\r", "\n")
+        return ""
+
+    def _insert_into_input_zone(self, text: str):
+        if not text:
+            return
+        self._force_cursor_into_input()
+        cursor = self.textCursor()
+        prompt_pos = self._prompt_pos()
+        if cursor.selectionStart() < prompt_pos:
+            cursor.clearSelection()
+            cursor.setPosition(len(self.toPlainText()))
+        cursor.insertText(text)
+        self.setTextCursor(cursor)
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_C and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if self._running_getter and self._running_getter():
@@ -318,11 +363,6 @@ class TerminalEdit(QTextEdit):
             self.setFocus(Qt.FocusReason.MouseFocusReason)
             self._mouse_dragging = False
         super().mousePressEvent(event)
-        if event.button() == Qt.MouseButton.LeftButton and not self._mouse_dragging:
-            if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
-                cursor = self.cursorForPosition(event.position().toPoint())
-                cursor.clearSelection()
-                self.setTextCursor(cursor)
 
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.MouseButton.LeftButton:
@@ -334,6 +374,45 @@ class TerminalEdit(QTextEdit):
         if event.button() == Qt.MouseButton.LeftButton:
             self.setFocus(Qt.FocusReason.MouseFocusReason)
             self._mouse_dragging = False
+            if not self.textCursor().hasSelection() and self.textCursor().position() < self._prompt_pos():
+                self._set_cursor_to_input_end()
+
+    def inputMethodEvent(self, event: QInputMethodEvent):
+        if event.commitString() or event.preeditString():
+            self._force_cursor_into_input()
+        super().inputMethodEvent(event)
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def canInsertFromMimeData(self, source: QMimeData) -> bool:
+        if source.hasUrls() or source.hasText():
+            return True
+        return super().canInsertFromMimeData(source)
+
+    def insertFromMimeData(self, source: QMimeData):
+        text = self._build_drop_text(source)
+        if text:
+            self._insert_into_input_zone(text)
+            return
+        super().insertFromMimeData(source)
+
+    def dropEvent(self, event: QDropEvent):
+        text = self._build_drop_text(event.mimeData())
+        if text:
+            self._insert_into_input_zone(text)
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
 
 
 class CommandConverterPage(QWidget):
@@ -354,7 +433,8 @@ class CommandConverterPage(QWidget):
         self._current_tool = "ffmpeg"
         self._platform = platform.system()
         self._skin = TERMINAL_SKINS.get(self._platform, TERMINAL_SKINS["Linux"])
-        self._prompt_prefix = f"{self._skin['title']}  -  {self._skin['badge']}\n{self._skin['prompt']}"
+        self._header_line = ""
+        self._prompt_text = ""
         self._prompt_pos = 0
         self._terminal_history = []
         self._record_history = True
@@ -376,6 +456,7 @@ class CommandConverterPage(QWidget):
         self._theme_cmd_color = "#0F766E"
         self._theme_meta_color = "#6D28D9"
         self._theme_banner_color = "#111827"
+        self._refresh_terminal_strings()
         self._init_ui()
         self._connect_handler_signals()
         self._apply_terminal_style()
@@ -547,9 +628,15 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     def set_language(self, language: str):
         self._language = resolve_language(language or "auto")
         self._skin = TERMINAL_SKINS.get(self._platform, TERMINAL_SKINS["Linux"])
-        label = tr(self._language, "tab_command")
-        self._prompt_prefix = f"{label}  -  FFmpeg\nformix > "
+        self._refresh_terminal_strings()
         self._reset_terminal()
+
+    def _refresh_terminal_strings(self):
+        label = tr(self._language, "tab_command")
+        badge = self._skin.get("badge", "FFmpeg")
+        prompt = self._skin.get("prompt", "formix > ")
+        self._header_line = f"{label}  -  {badge}"
+        self._prompt_text = prompt if prompt.endswith(" ") else (prompt + " ")
 
     def set_theme(self, mode: str, bg_colors: dict = None):
         self._is_dark = mode == "dark"
@@ -572,6 +659,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         for line, kind in zip(ready_lines, kinds):
             self._append_terminal_text(line, kind=kind)
         self._append_terminal_text("")
+        self._append_terminal_text(self._header_line, kind="cmd")
         self._append_prompt()
         self._prompt_pos = len(self.terminal.toPlainText())
         self._move_cursor_to_end()
@@ -649,6 +737,36 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 return window.command_page_busy_reason() or ""
         return ""
 
+    def _missing_tool_message(self, tool: str) -> str:
+        handler = self.ffmpeg_handler
+        if handler is None:
+            return TXT_MISSING_SUITE
+
+        ffmpeg_path = getattr(handler, "ffmpeg_path", "")
+        ffprobe_path = getattr(handler, "ffprobe_path", "")
+        ffplay_path = getattr(handler, "ffplay_path", "")
+        if not any((ffmpeg_path, ffprobe_path, ffplay_path)):
+            return TXT_MISSING_SUITE
+
+        tool = (tool or "ffmpeg").lower()
+        if tool == "ffplay":
+            if not ffplay_path:
+                if ffmpeg_path or ffprobe_path:
+                    return "FFmpeg is installed, but FFplay is missing. Please re-download the FFmpeg bundle from Settings."
+                return TXT_MISSING_SUITE
+            return ""
+        if tool == "ffprobe":
+            if not ffprobe_path:
+                if ffmpeg_path or ffplay_path:
+                    return "FFmpeg is installed, but FFprobe is missing. Please re-download the FFmpeg bundle from Settings."
+                return TXT_MISSING_SUITE
+            return ""
+        if not ffmpeg_path:
+            if ffprobe_path or ffplay_path:
+                return "FFmpeg is installed incompletely. The ffmpeg executable is missing. Please re-download the FFmpeg bundle from Settings."
+            return TXT_MISSING_SUITE
+        return ""
+
     def _append_terminal_text(self, text: str, ensure_newline: bool = True, kind: str = "text"):
         follow_output, scroll_value, view_cursor = self._capture_view_state()
         cursor = QTextCursor(self.terminal.document())
@@ -714,7 +832,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self.terminal.setTextCursor(cursor)
         cursor = self.terminal.textCursor()
         cursor.setCharFormat(self._kind_format("prompt"))
-        cursor.insertText(self._prompt_prefix)
+        cursor.insertText(self._prompt_text)
         cursor.setCharFormat(self._kind_format("text"))
         self.terminal.setTextCursor(cursor)
         if self._record_history:
@@ -993,7 +1111,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 
         if not self.ffmpeg_handler:
             self._pending_command = ""
-            self._append_terminal_text("\n" + TXT_MISSING_FFMPEG, kind="error")
+            self._append_terminal_text("\n" + TXT_MISSING_SUITE, kind="error")
             self._append_prompt()
             self._prompt_pos = len(self.terminal.toPlainText())
             return
@@ -1030,17 +1148,11 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         self.input_files = [input_hint] if input_hint else [f"{tool}-command"]
         self.output_dir = os.path.dirname(output_hint) if output_hint else ""
         self._output_path = output_hint
-        if tool in {"ffprobe", "ffprobe.exe"} and not getattr(self.ffmpeg_handler, "ffprobe_path", ""):
+        missing_msg = self._missing_tool_message(self._current_tool)
+        if missing_msg:
             self._active = False
             self._pending_command = ""
-            self._append_terminal_text("\n" + TXT_MISSING_FFPROBE, kind="error")
-            self._append_prompt()
-            self._prompt_pos = len(self.terminal.toPlainText())
-            return
-        if tool in {"ffplay", "ffplay.exe"} and not getattr(self.ffmpeg_handler, "ffplay_path", ""):
-            self._active = False
-            self._pending_command = ""
-            self._append_terminal_text("\n" + TXT_MISSING_FFPLAY, kind="error")
+            self._append_terminal_text("\n" + missing_msg, kind="error")
             self._append_prompt()
             self._prompt_pos = len(self.terminal.toPlainText())
             return

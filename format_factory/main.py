@@ -456,15 +456,8 @@ class MainWindow(QMainWindow):
         self._bg_colors      = {}
         self._gpu_vendor     = self._s.value("gpu_vendor",    "none")
         self._daily_enabled  = self._s.value("daily_wp",      False, type=bool)
-        self._ffmpeg_ready   = False
-
-        try:
-            self.ffmpeg_handler = FFmpegHandler()
-            self._ffmpeg_ready = True
-        except FileNotFoundError as e:
-            self.ffmpeg_handler = None
-            self._ffmpeg_ready = False
-            self._ffmpeg_missing_reason = str(e)
+        self.ffmpeg_handler = FFmpegHandler()
+        self._ffmpeg_ready = bool(getattr(self.ffmpeg_handler, "ffmpeg_path", ""))
 
         # Batch state
         self._batch_page    = None

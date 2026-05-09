@@ -46,12 +46,9 @@ class FFmpegHandler(QObject):
 
     def __init__(self):
         super().__init__()
-        self.ffmpeg_path  = get_ffmpeg_path()
+        self.ffmpeg_path  = get_ffmpeg_path(required=False)
         self.ffprobe_path = get_ffprobe_path()
         self.ffplay_path  = get_ffplay_path(required=False)
-        if not self.ffmpeg_path:
-            raise FileNotFoundError(
-                "FFmpeg executable not found. Please check config.")
 
         self._q           = queue.Queue()
         self._proc        = None          # current subprocess
@@ -64,6 +61,9 @@ class FFmpegHandler(QObject):
     # ── public ──────────────────────────────────────────────────────
     def convert_file(self, idx: int, inp: str, out: str, args: list):
         """Enqueue one task. Worker auto‑starts if idle."""
+        if not self.ffmpeg_path:
+            self.conversion_finished.emit(idx, "failure", "找不到 FFmpeg 可执行文件")
+            return
         self._q.put((idx, inp, out, args))
         self._start_worker()
 
@@ -71,6 +71,9 @@ class FFmpegHandler(QObject):
                            input_hint: str = "", output_hint: str = "",
                            terminal_mode: bool = False):
         """Run a validated ffmpeg command line without going through a shell."""
+        if not self.ffmpeg_path:
+            self.conversion_finished.emit(idx, "failure", "找不到 FFmpeg 可执行文件")
+            return
         self._q.put(("custom", "ffmpeg", idx, args, input_hint, output_hint, terminal_mode))
         self._start_worker()
 

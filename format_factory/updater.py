@@ -267,6 +267,11 @@ class FFmpegDownloadThread(QThread):
                 return os.path.join(root, exe_name)
         return ""
 
+    @staticmethod
+    def _cleanup_cache_dir(cache_dir: str):
+        if cache_dir and os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir, ignore_errors=True)
+
     def run(self):
         archive_paths = []
         extract_root = ""
@@ -331,18 +336,19 @@ class FFmpegDownloadThread(QThread):
 
         except Exception as e:
             if str(e) == "cancelled":
-                for archive_path in archive_paths:
-                    if archive_path and os.path.exists(archive_path):
-                        try:
-                            os.remove(archive_path)
-                        except OSError:
-                            pass
                 self.finished.emit(False, "cancelled")
             else:
                 self.finished.emit(False, str(e))
         finally:
             if extract_root and os.path.exists(extract_root):
                 shutil.rmtree(extract_root, ignore_errors=True)
+            for archive_path in archive_paths:
+                if archive_path and os.path.exists(archive_path):
+                    try:
+                        os.remove(archive_path)
+                    except OSError:
+                        pass
+            self._cleanup_cache_dir(self.cache_dir)
 
 
 # ── 主服务对象 ────────────────────────────────────────────────────────
