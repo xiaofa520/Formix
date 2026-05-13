@@ -2,6 +2,7 @@
 import sys
 import os
 import colorsys
+import json
 import re as _re
 import platform
 import subprocess
@@ -9,7 +10,8 @@ from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QTabWidget, QMessageBox, QLabel
+    QTabWidget, QMessageBox, QLabel, QDialog, QDialogButtonBox,
+    QTextBrowser, QCheckBox, QHBoxLayout
 )
 from PyQt6.QtCore import Qt, QTimer, QSettings
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QImage
@@ -401,17 +403,21 @@ def apply_gpu_args(base_args: list, vendor: str, output_fmt: str) -> tuple:
                 result = result[:j+2] + enc["extra"] + result[j+2:]
                 break
 
-    # GPU encoders (AMF/NVENC/QSV) do NOT support x264 -preset values.
-    # Strip -preset <value> pairs from the result when GPU is active.
+    # GPU encoders need vendor-specific quality controls; strip CPU-centric
+    # knobs that commonly make NVENC/AMF/QSV invocations invalid.
     if replaced:
         filtered = []
         k = 0
         while k < len(result):
-            if result[k] == "-preset" and k + 1 < len(result):
-                k += 2  # drop both "-preset" and its value
-            else:
-                filtered.append(result[k])
-                k += 1
+            tok = result[k]
+            if tok in {"-preset", "-crf"} and k + 1 < len(result):
+                k += 2
+                continue
+            if tok == "-q:v" and k + 1 < len(result):
+                k += 2
+                continue
+            filtered.append(tok)
+            k += 1
         result = filtered
 
     # GPU encoders (nvenc/amf/qsv) only accept YUV420P.
@@ -426,6 +432,9 @@ def apply_gpu_args(base_args: list, vendor: str, output_fmt: str) -> tuple:
 # ══════════════════════════════════════════════════════════════════
 class MainWindow(QMainWindow):
     _FFMPEG_UPDATE_AFTER_DAYS = 30
+    _DAILY_REFRESH_OPTIONS = {1, 2, 3, 4, 5, 6, 7, "manual"}
+    _UPDATE_CACHE_KEY = "update_cached_versions"
+    _UPDATE_CACHE_TIME_KEY = "update_cached_at"
 
     def __init__(self):
         super().__init__()
@@ -456,6 +465,10 @@ class MainWindow(QMainWindow):
         self._bg_colors      = {}
         self._gpu_vendor     = self._s.value("gpu_vendor",    "none")
         self._daily_enabled  = self._s.value("daily_wp",      False, type=bool)
+        self._daily_wp_api_url = str(self._s.value("daily_wp_api_url", ""))
+        self._daily_wp_refresh_days = self._normalize_daily_refresh_days(
+            self._s.value("daily_wp_refresh_days", 1)
+        )
         self.ffmpeg_handler = FFmpegHandler()
         self._ffmpeg_ready = bool(getattr(self.ffmpeg_handler, "ffmpeg_path", ""))
 
@@ -496,6 +509,7 @@ class MainWindow(QMainWindow):
 
         # ── 每日壁纸服务 ──────────────────────────────────────────────
         self._wallpaper_svc = DailyWallpaperService(self)
+        self._wallpaper_svc.load_preferences(self._daily_wp_api_url, self._daily_wp_refresh_days)
         self._wallpaper_svc.wallpaper_ready.connect(self._on_wallpaper_ready)
         self._wallpaper_svc.status_changed.connect(self._on_wallpaper_status)
         self._wallpaper_svc.error_occurred.connect(self._on_wallpaper_error)
@@ -513,6 +527,20 @@ class MainWindow(QMainWindow):
 
         # 启动时后台静默检查
         self._updater_svc.check()
+
+    @classmethod
+    def _normalize_daily_refresh_days(cls, value):
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text == "manual":
+                return "manual"
+            if text.isdigit():
+                num = int(text)
+                if num in cls._DAILY_REFRESH_OPTIONS:
+                    return num
+        elif isinstance(value, int) and value in cls._DAILY_REFRESH_OPTIONS:
+            return value
+        return 1
 
     def _init_ffmpeg_action_timer(self):
         self._ffmpeg_action_timer = QTimer(self)
@@ -612,6 +640,7 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         self.tab_widget = QTabWidget()
+        self.tab_widget.tabBar().setExpanding(True)
         root.addWidget(self.tab_widget)
 
         self.video_page    = VideoConverterPage(ffmpeg_handler=self.ffmpeg_handler)
@@ -629,7 +658,9 @@ class MainWindow(QMainWindow):
             command_line_enabled = self._command_line_enabled,
             daily_enabled  = self._daily_enabled,
             mask_opacity   = self._bg_opacity,
-            current_language = self._language_pref)
+            current_language = self._language_pref,
+            daily_api_url = self._daily_wp_api_url,
+            daily_refresh_days = self._daily_wp_refresh_days)
 
         self.tab_widget.addTab(self.video_page,    "")
         self.tab_widget.addTab(self.audio_page,    "")
@@ -677,6 +708,8 @@ class MainWindow(QMainWindow):
         self.settings_page.gpu_vendor_changed.connect(self._on_gpu_vendor_changed)
         self.settings_page.daily_wallpaper_toggled.connect(self._on_daily_toggled)
         self.settings_page.daily_wallpaper_refresh.connect(self._on_daily_refresh)
+        self.settings_page.daily_wallpaper_api_changed.connect(self._on_daily_api_changed)
+        self.settings_page.daily_wallpaper_refresh_days_changed.connect(self._on_daily_refresh_days_changed)
         self.settings_page.check_update_requested.connect(self._on_check_update_requested)
         self.settings_page.download_ffmpeg_requested.connect(self._on_download_ffmpeg_requested)
 
@@ -688,18 +721,39 @@ class MainWindow(QMainWindow):
                 pg.focus_terminal()
 
     def command_page_busy_reason(self, requester=None) -> str:
-        active_page = self._batch_page
-        if active_page is None:
+        busy_page = self._active_ffmpeg_page()
+        if busy_page is None:
             return ""
-        if requester is not None and active_page is requester:
+        if requester is not None and busy_page is requester:
             return ""
         return "当前已有转换任务在运行，请等待完成或先取消后再执行命令。"
+
+    def _active_ffmpeg_page(self):
+        if self._batch_page is not None:
+            return self._batch_page
+        if self.command_page is not None and getattr(self.command_page, "_active", False):
+            return self.command_page
+        if self.ffmpeg_handler and self.ffmpeg_handler.is_busy():
+            return self.current_page
+        return None
+
+    def _ensure_handler_available(self, page) -> bool:
+        busy_page = self._active_ffmpeg_page()
+        if busy_page is not None and busy_page is not page:
+            if page and hasattr(page, "log_message"):
+                page.log_message("当前已有转换任务在运行，请等待完成或先取消。", "warning")
+            return False
+        return True
 
     # ── Batch ────────────────────────────────────────────────────────
     def _on_batch_start(self, idx, inp, args, stem):
         pg = self.current_page
         if not pg: return
         if not self._ensure_ffmpeg_ready(pg):
+            return
+        if idx == 0 and not self._ensure_handler_available(pg):
+            pg.start_conversion_button.setEnabled(True)
+            pg.cancel_conversion_button.setEnabled(False)
             return
         if idx == 0:
             self._batch_page  = pg
@@ -790,6 +844,12 @@ class MainWindow(QMainWindow):
                    else tab._video_fmt_combo.currentText())
         out = os.path.join(out_dir, f"{stem}.{ext}")
 
+        if idx == 0 and not self._ensure_handler_available(self.av_page):
+            if hasattr(tab, "_cancel_btn"):
+                tab._cancel_btn.setEnabled(False)
+            if hasattr(tab, "_update_state"):
+                tab._update_state()
+            return
         self._batch_page  = self.av_page
         self._batch_total = tab._total
         if self._ensure_ffmpeg_ready(self.av_page):
@@ -803,6 +863,13 @@ class MainWindow(QMainWindow):
         在 args 最前面注入 "-i audio"，命令就变为：
           ffmpeg -y -i video -i audio <merge_args> out
         """
+        if idx == 0 and not self._ensure_handler_available(self.av_page):
+            merge_tab = self.av_page.merge_tab
+            if hasattr(merge_tab, "_cancel_btn"):
+                merge_tab._cancel_btn.setEnabled(False)
+            if hasattr(merge_tab, "_update_state"):
+                merge_tab._update_state()
+            return
         self._batch_page  = self.av_page
         self._batch_total = self.av_page.merge_tab._total
         full_args = ["-i", audio] + args
@@ -1005,6 +1072,25 @@ class MainWindow(QMainWindow):
         """手动刷新：清除缓存 + 重新获取（force_refresh 内部已包含清缓存）。"""
         self._wallpaper_svc.force_refresh()
 
+    def _on_daily_api_changed(self, api_url: str):
+        self._daily_wp_api_url = str(api_url or "").strip()
+        self._s.setValue("daily_wp_api_url", self._daily_wp_api_url)
+        self._wallpaper_svc.set_api_url(self._daily_wp_api_url)
+        if self._daily_wp_api_url:
+            if self._daily_enabled:
+                self.settings_page.set_daily_status("壁纸 API 已自动应用，后续刷新将只使用当前自定义地址。")
+            else:
+                self.settings_page.set_daily_status("壁纸 API 已保存，但当前未启用每日壁纸，请先启用每日壁纸后才会生效。")
+        else:
+            self.settings_page.set_daily_status("未填写壁纸 API，已停用内置地址，请输入自定义链接。")
+
+    def _on_daily_refresh_days_changed(self, refresh_days):
+        self._daily_wp_refresh_days = self._normalize_daily_refresh_days(refresh_days)
+        self._s.setValue("daily_wp_refresh_days", self._daily_wp_refresh_days)
+        self._wallpaper_svc.set_refresh_policy(self._daily_wp_refresh_days)
+        label = "永久" if self._daily_wp_refresh_days == "manual" else f"{self._daily_wp_refresh_days} 天"
+        self.settings_page.set_daily_status(f"刷新策略已改为 {label}，将从明天开始生效。")
+
     def _on_wallpaper_status(self, key: str):
         _MAP = {
             "cached":   "已加载今日壁纸",
@@ -1015,8 +1101,10 @@ class MainWindow(QMainWindow):
             raw = key[5:]
             if raw.startswith("url_error:"):
                 msg = f"网络错误: {raw[10:]}"
-            elif raw == "no_url":
-                msg = "API 返回数据中没有 url 字段"
+            elif raw == "no_api":
+                msg = "未填写壁纸 API，请先输入一个自定义链接"
+            elif raw == "invalid_response":
+                msg = "API 响应格式无效，需返回 JSON url 或纯文本图片地址"
             else:
                 msg = f"请求失败: {raw}"
             self.settings_page.set_daily_status(f"❌ 获取失败: {msg}")
@@ -1026,8 +1114,10 @@ class MainWindow(QMainWindow):
     def _on_wallpaper_error(self, key: str):
         if key.startswith("url_error:"):
             msg = f"网络错误: {key[10:]}"
-        elif key == "no_url":
-            msg = "API 返回数据中没有 url 字段"
+        elif key == "no_api":
+            msg = "未填写壁纸 API，请先输入一个自定义链接"
+        elif key == "invalid_response":
+            msg = "API 响应格式无效，需返回 JSON url 或纯文本图片地址"
         elif key.startswith("error:"):
             msg = f"请求异常: {key[6:]}"
         else:
@@ -1078,50 +1168,72 @@ class MainWindow(QMainWindow):
         if ignored_version == ver and not required_update:
             return  # 如果该版本已经被忽略，直接返回不显示弹窗
 
-        msg = f"发现新版本 <b>v{ver}</b>"
-        if date:
-            msg += f"  ({date})"
-        if notes:
-            msg += f"<br><br>更新说明：{notes}"
+        if self._show_update_dialog(ver, date, notes, url, required_update):
+            self._start_internal_download(url, ver)
+
+    def _show_update_dialog(self, ver: str, release_date: str, notes: str, url: str, required_update: bool) -> bool:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("发现新版本")
+        dialog.setModal(True)
+        dialog.resize(620, 520)
+
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(18, 18, 18, 14)
+        root.setSpacing(10)
+
+        title = QLabel(f"<b>发现新版本 v{ver}</b>")
+        title.setTextFormat(Qt.TextFormat.RichText)
+        root.addWidget(title)
+
+        meta = []
+        if release_date:
+            meta.append(f"发布日期：{release_date}")
+        meta.append("更新类型：必须更新" if required_update else "更新类型：可选更新")
+        meta_label = QLabel("  ·  ".join(meta))
+        meta_label.setObjectName("section_title")
+        meta_label.setWordWrap(True)
+        root.addWidget(meta_label)
+
         if required_update:
-            msg += "<br><br><b>此版本需要更新，当前版本已不再受支持。</b>"
-        if url:
-            msg += "<br><br>是否前往下载？"
+            warn = QLabel("<b>此版本需要更新，当前版本已不再受支持。</b>")
+            warn.setTextFormat(Qt.TextFormat.RichText)
+            warn.setWordWrap(True)
+            root.addWidget(warn)
 
-        from PyQt6.QtWidgets import QCheckBox
+        notes_view = QTextBrowser()
+        notes_view.setOpenExternalLinks(True)
+        notes_view.setReadOnly(True)
+        notes_view.setMinimumHeight(260)
+        notes_view.setMarkdown(notes or "暂无更新说明。")
+        root.addWidget(notes_view, 1)
 
-        box = QMessageBox(self)
-        box.setWindowTitle("发现新版本")
-        box.setTextFormat(Qt.TextFormat.RichText)
-        box.setText(msg)
-
-        # 添加“不再显示”复选框
         cb_ignore = None
         if not required_update:
             cb_ignore = QCheckBox("不再显示此版本的更新提示")
-            box.setCheckBox(cb_ignore)
+            root.addWidget(cb_ignore)
 
+        buttons = QDialogButtonBox(dialog)
+        download_btn = None
+        later_btn = None
         if url:
-            if required_update:
-                box.setStandardButtons(QMessageBox.StandardButton.Yes)
-                box.button(QMessageBox.StandardButton.Yes).setText("立即下载")
-            else:
-                box.setStandardButtons(
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                box.setDefaultButton(QMessageBox.StandardButton.Yes)
-                box.button(QMessageBox.StandardButton.Yes).setText("立即下载")
-                box.button(QMessageBox.StandardButton.No).setText("稍后再说")
+            download_btn = buttons.addButton("立即下载", QDialogButtonBox.ButtonRole.AcceptRole)
+            download_btn.clicked.connect(dialog.accept)
+            if not required_update:
+                later_btn = buttons.addButton("稍后再说", QDialogButtonBox.ButtonRole.RejectRole)
+                later_btn.clicked.connect(dialog.reject)
         else:
-            box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            later_btn = buttons.addButton("关闭", QDialogButtonBox.ButtonRole.AcceptRole)
+            later_btn.clicked.connect(dialog.accept)
 
-        result = box.exec()
+        bottom = QHBoxLayout()
+        bottom.addStretch()
+        bottom.addWidget(buttons)
+        root.addLayout(bottom)
 
-        # 如果用户勾选了“不再显示”，保存该版本号到设置中
+        accepted = dialog.exec() == int(QDialog.DialogCode.Accepted)
         if cb_ignore is not None and cb_ignore.isChecked():
             self._s.setValue("ignored_update_version", ver)
-
-        if result == QMessageBox.StandardButton.Yes and url:
-            self._start_internal_download(url, ver)
+        return bool(accepted and url)
 
     def _start_internal_download(self, url: str, ver: str):
         """开始内部下载更新包并显示进度条"""
@@ -1201,36 +1313,61 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QApplication
         QApplication.quit()
 
-    def _on_versions_loaded(self, versions: list):
-        """版本列表加载完成；构建更新公告（新版本在上，当前版本在下）。"""
-        self.settings_page.populate_versions(versions)
+    def _normalize_cached_update_versions(self, versions) -> list:
+        normalized = []
+        if not isinstance(versions, list):
+            return normalized
+        for item in versions:
+            if not isinstance(item, dict):
+                continue
+            version = str(item.get("version", "")).strip()
+            if not version:
+                continue
+            normalized.append({
+                "version": version,
+                "release_date": str(item.get("release_date", "") or "").strip(),
+                "update_url": str(item.get("update_url", "") or "").strip(),
+                "html_url": str(item.get("html_url", "") or "").strip(),
+                "zipball_url": str(item.get("zipball_url", "") or "").strip(),
+                "release_notes": str(item.get("release_notes", "") or ""),
+                "mandatory": _as_bool(item.get("mandatory", False)),
+                "min_supported_version": str(item.get("min_supported_version", "") or "").strip(),
+            })
+        return normalized
+
+    def _save_cached_update_versions(self, versions: list):
+        versions = self._normalize_cached_update_versions(versions)
         if not versions:
-            self.settings_page.set_update_status("版本列表为空，请稍后重试")
-            self.settings_page.set_update_notes("")
             return
+        self._s.setValue(self._UPDATE_CACHE_KEY, json.dumps(versions, ensure_ascii=False))
+        self._s.setValue(self._UPDATE_CACHE_TIME_KEY, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
+    def _load_cached_update_versions(self) -> tuple[list, str]:
+        raw = self._s.value(self._UPDATE_CACHE_KEY, "")
+        fetched_at = str(self._s.value(self._UPDATE_CACHE_TIME_KEY, "") or "").strip()
+        if not raw:
+            return [], fetched_at
+        try:
+            versions = json.loads(raw)
+        except Exception:
+            return [], fetched_at
+        return self._normalize_cached_update_versions(versions), fetched_at
+
+    def _build_update_notes_markdown(self, versions: list) -> str:
         cur_tuple = _parse_version(APP_VERSION)
-        latest_ver = versions[0].get("version", "")
-
-        if _parse_version(latest_ver) <= cur_tuple:
-            self.settings_page.set_update_status(
-                f"✅ 当前已是最新版本 v{APP_VERSION}")
-            self.settings_page.set_version_badge(False)
-
-        # ── 构建公告：高于当前版本的在上，当前版本在下 ──────────────────
-        newer_parts  = []
+        newer_parts = []
         current_part = None
         for v in versions:
-            ver   = v.get("version", "")
-            date  = v.get("release_date", "")
+            ver = v.get("version", "")
+            date = v.get("release_date", "")
             notes = v.get("release_notes", "")
             if not ver:
                 continue
-            header = f"<b>v{ver}</b>"
+            header = f"## v{ver}"
             if date:
-                header += f"  <span style='opacity:0.6'>({date})</span>"
-            body = notes.replace("\n", "<br>") if notes else ""
-            block = header + (f"<br>{body}" if body else "")
+                header += f"  ({date})"
+            body = notes or ""
+            block = header + (f"\n\n{body}" if body else "")
             if _parse_version(ver) > cur_tuple:
                 newer_parts.append(block)
             elif _parse_version(ver) == cur_tuple:
@@ -1238,18 +1375,61 @@ class MainWindow(QMainWindow):
 
         sections = []
         if newer_parts:
-            sections.append("<br><hr>".join(newer_parts))
+            sections.append("\n\n---\n\n".join(newer_parts))
         if current_part:
-            label = "<span style='opacity:0.55'>当前版本</span>"
-            if sections:
-                sections.append(f"<hr>{label}<br>{current_part}")
-            else:
-                sections.append(f"{label}<br>{current_part}")
+            sections.append(f"## 当前版本\n\n{current_part}")
+        return "\n\n---\n\n".join(sections)
 
-        self.settings_page.set_update_notes("<br>".join(sections))
+    def _apply_update_versions_to_ui(self, versions: list, *, offline_fallback: bool = False, fetched_at: str = ""):
+        self.settings_page.populate_versions(versions)
+        if not versions:
+            self.settings_page.set_update_status("版本列表为空，请稍后重试")
+            self.settings_page.set_update_notes("")
+            return
+
+        latest = versions[0]
+        latest_ver = str(latest.get("version", "") or "")
+        latest_date = str(latest.get("release_date", "") or "")
+        has_update = _parse_version(latest_ver) > _parse_version(APP_VERSION)
+        required_update = _is_update_required(latest)
+
+        if offline_fallback:
+            suffix = f"（上次获取：{fetched_at}）" if fetched_at else "（上次成功获取）"
+            if has_update:
+                status = f"{'🚨' if required_update else '🆕'} 当前离线，显示缓存的更新信息 v{latest_ver}"
+                if latest_date:
+                    status += f"  ({latest_date})"
+                if required_update:
+                    status += "  ·  需要更新"
+                status += f"  {suffix}"
+                self.settings_page.set_version_badge(True, latest_ver)
+            else:
+                status = f"📦 当前离线，显示缓存的版本信息 v{APP_VERSION}  {suffix}"
+                self.settings_page.set_version_badge(False)
+            self.settings_page.set_update_status(status)
+        else:
+            if not has_update:
+                self.settings_page.set_update_status(f"✅ 当前已是最新版本 v{APP_VERSION}")
+                self.settings_page.set_version_badge(False)
+
+        self.settings_page.set_update_notes(self._build_update_notes_markdown(versions))
+
+    def _on_versions_loaded(self, versions: list):
+        """版本列表加载完成；构建更新公告（新版本在上，当前版本在下）。"""
+        self._save_cached_update_versions(versions)
+        self._apply_update_versions_to_ui(versions)
 
     def _on_update_check_failed(self, err: str):
         """版本检查失败，翻译为中文后显示在设置页。"""
+        if err.startswith("url_error:"):
+            cached_versions, fetched_at = self._load_cached_update_versions()
+            if cached_versions:
+                self._apply_update_versions_to_ui(
+                    cached_versions,
+                    offline_fallback=True,
+                    fetched_at=fetched_at,
+                )
+                return
         if err.startswith("url_error:"):
             msg = f"网络错误: {err[10:]}"
         elif err.startswith("error:"):

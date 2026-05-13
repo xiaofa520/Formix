@@ -98,6 +98,15 @@ class FFmpegHandler(QObject):
             if self._proc:
                 self._terminate_process(self._proc)
 
+    def is_busy(self) -> bool:
+        """Return True when work is running or queued."""
+        if not self._q.empty():
+            return True
+        with self._lock:
+            if self._proc is not None:
+                return True
+            return bool(self._worker and self._worker.is_alive())
+
     def shutdown(self):
         """Stop queued work and terminate any running FFmpeg/FFprobe/FFplay process."""
         self._shutdown.set()

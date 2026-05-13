@@ -491,6 +491,7 @@ class SplitTab(QWidget, _LogMixin):
         self._audio_fmt_combo = QComboBox()
         self._audio_fmt_combo.setFixedHeight(_BTN_H)
         self._audio_fmt_combo.addItems(AUDIO_ONLY_FMTS)
+        self._audio_fmt_combo.setCurrentText("m4a")
         self._audio_fmt_combo.setMinimumWidth(120)
         self._audio_fmt_row.addWidget(self._audio_fmt_combo)
         self._audio_fmt_row.addStretch()
@@ -629,6 +630,11 @@ class SplitTab(QWidget, _LogMixin):
 
     def _update_state(self):
         ok = bool(self._files and self._out_dir)
+        self._start_btn.setToolTip("")
+        if not self._handler:
+            self._start_btn.setEnabled(False)
+            self._start_btn.setToolTip("未找到 FFmpeg，请到设置下载 FFmpeg")
+            return
         self._start_btn.setEnabled(ok)
 
     @staticmethod
@@ -1007,6 +1013,11 @@ class MergeTab(QWidget, _LogMixin):
 
     def _update_state(self):
         ok = bool(self._video_files and self._audio_file and self._out_dir)
+        self._start_btn.setToolTip("")
+        if not self._handler:
+            self._start_btn.setEnabled(False)
+            self._start_btn.setToolTip("未找到 FFmpeg，请到设置下载 FFmpeg")
+            return
         self._start_btn.setEnabled(ok)
 
     @staticmethod

@@ -14,11 +14,242 @@ import shutil
 import zipfile
 import tarfile
 import platform
+import math
+import threading
+import ssl
 
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
 _API_URL = "https://api.github.com/repos/xiaofa520/Formix/releases/latest"
 _TIMEOUT = 10
+_MAX_DOWNLOAD_THREADS = 8
+_DOWNLOAD_USER_AGENT = "Mozilla/5.0 FormatFactory/1.0"
+
+
+def _is_retryable_download_error(exc: Exception | str) -> bool:
+    text = str(exc or "").lower()
+    return any(token in text for token in (
+        "unexpected_eof_while_reading",
+        "eof occurred in violation of protocol",
+        "ssl:",
+        "tlsv1",
+        "decryption failed or bad record mac",
+        "connection reset",
+        "connection aborted",
+        "remote end closed connection",
+        "incomplete read",
+    ))
+
+
+def _request_with_tls_retry(req: urllib.request.Request, timeout: int, *, allow_insecure_retry: bool = True):
+    last_exc = None
+    contexts = [None]
+    if allow_insecure_retry:
+        insecure = ssl.create_default_context()
+        insecure.check_hostname = False
+        insecure.verify_mode = ssl.CERT_NONE
+        contexts.append(insecure)
+    for ctx in contexts:
+        try:
+            return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+        except Exception as exc:
+            last_exc = exc
+            if ctx is None and _is_retryable_download_error(exc):
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("download_open_failed")
+
+
+def _download_thread_count(total_size: int) -> int:
+    if total_size <= 0:
+        return 1
+    if total_size < 8 * 1024 * 1024:
+        return 1
+    if total_size < 32 * 1024 * 1024:
+        return 2
+    if total_size < 96 * 1024 * 1024:
+        return 4
+    return _MAX_DOWNLOAD_THREADS
+
+
+def _probe_download(url: str, timeout: int = 20) -> dict:
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": _DOWNLOAD_USER_AGENT})
+    try:
+        with _request_with_tls_retry(req, timeout) as response:
+            headers = response.info()
+            return {
+                "total_size": int(headers.get("Content-Length", 0) or 0),
+                "accept_ranges": str(headers.get("Accept-Ranges", "") or "").lower(),
+            }
+    except Exception:
+        req = urllib.request.Request(url, headers={"User-Agent": _DOWNLOAD_USER_AGENT, "Range": "bytes=0-0"})
+        with _request_with_tls_retry(req, timeout) as response:
+            headers = response.info()
+            total = int(headers.get("Content-Range", "bytes 0-0/0").split("/")[-1] or 0)
+            return {
+                "total_size": total or int(headers.get("Content-Length", 0) or 0),
+                "accept_ranges": "bytes" if response.status == 206 else str(headers.get("Accept-Ranges", "") or "").lower(),
+            }
+
+
+class _RangeDownloadWorker(threading.Thread):
+    def __init__(self, url: str, start: int, end: int, part_path: str,
+                 progress_cb, cancel_cb, error_holder: list[str]):
+        super().__init__(daemon=True)
+        self.url = url
+        self.start_byte = start
+        self.end_byte = end
+        self.part_path = part_path
+        self.progress_cb = progress_cb
+        self.cancel_cb = cancel_cb
+        self.error_holder = error_holder
+
+    def run(self):
+        if self.cancel_cb():
+            return
+        try:
+            req = urllib.request.Request(
+                self.url,
+                headers={
+                    "User-Agent": _DOWNLOAD_USER_AGENT,
+                    "Range": f"bytes={self.start_byte}-{self.end_byte}",
+                },
+            )
+            with _request_with_tls_retry(req, 30) as response, open(self.part_path, "wb") as f:
+                while True:
+                    if self.cancel_cb():
+                        return
+                    chunk = response.read(1024 * 256)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    self.progress_cb(len(chunk))
+        except Exception as exc:
+            self.error_holder.append(str(exc))
+
+
+class _ParallelDownloader:
+    def __init__(self, url: str, save_path: str, progress_cb, cancel_cb):
+        self.url = url
+        self.save_path = save_path
+        self.progress_cb = progress_cb
+        self.cancel_cb = cancel_cb
+        self._lock = threading.Lock()
+        self._downloaded = 0
+
+    def _emit_progress(self, chunk_size: int, total_size: int):
+        with self._lock:
+            self._downloaded += chunk_size
+            self.progress_cb(self._downloaded, total_size)
+
+    def download(self):
+        try:
+            info = _probe_download(self.url)
+        except Exception:
+            self._download_single(0)
+            return 0
+        total_size = int(info.get("total_size", 0) or 0)
+        accept_ranges = str(info.get("accept_ranges", "") or "")
+        thread_count = _download_thread_count(total_size)
+        supports_ranges = total_size > 0 and "bytes" in accept_ranges and thread_count > 1
+        if not supports_ranges:
+            self._download_single(total_size)
+            return total_size
+
+        part_paths = []
+        errors: list[str] = []
+        workers = []
+        chunk = int(math.ceil(total_size / thread_count))
+        base_dir = os.path.dirname(self.save_path)
+        file_name = os.path.basename(self.save_path)
+        for idx in range(thread_count):
+            start = idx * chunk
+            end = min(total_size - 1, start + chunk - 1)
+            if start > end:
+                break
+            part_path = os.path.join(base_dir, f".{file_name}.part{idx}")
+            part_paths.append(part_path)
+            worker = _RangeDownloadWorker(
+                self.url,
+                start,
+                end,
+                part_path,
+                lambda size, total_size=total_size: self._emit_progress(size, total_size),
+                self.cancel_cb,
+                errors,
+            )
+            workers.append(worker)
+
+        for worker in workers:
+            worker.start()
+        try:
+            for worker in workers:
+                worker.join()
+
+            if self.cancel_cb():
+                raise RuntimeError("cancelled")
+            if errors:
+                raise RuntimeError(errors[0])
+
+            with open(self.save_path, "wb") as out:
+                for part_path in part_paths:
+                    with open(part_path, "rb") as src:
+                        shutil.copyfileobj(src, out)
+            return total_size
+        except Exception as exc:
+            if str(exc) == "cancelled":
+                raise
+            if os.path.exists(self.save_path):
+                try:
+                    os.remove(self.save_path)
+                except OSError:
+                    pass
+            self._downloaded = 0
+            self._download_single(total_size)
+            return total_size
+        finally:
+            for part_path in part_paths:
+                if os.path.exists(part_path):
+                    try:
+                        os.remove(part_path)
+                    except OSError:
+                        pass
+
+    def _download_single(self, total_size: int):
+        req = urllib.request.Request(self.url, headers={"User-Agent": _DOWNLOAD_USER_AGENT})
+        attempts = 2
+        last_exc = None
+        for attempt in range(attempts):
+            try:
+                with _request_with_tls_retry(req, 20) as response, open(self.save_path, "wb") as f:
+                    real_total = total_size or int(response.info().get("Content-Length", 0) or 0)
+                    bytes_read = 0
+                    while True:
+                        if self.cancel_cb():
+                            raise RuntimeError("cancelled")
+                        chunk = response.read(1024 * 128)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        bytes_read += len(chunk)
+                        if real_total > 0:
+                            self.progress_cb(bytes_read, real_total)
+                return
+            except Exception as exc:
+                if str(exc) == "cancelled":
+                    raise
+                last_exc = exc
+                if os.path.exists(self.save_path):
+                    try:
+                        os.remove(self.save_path)
+                    except OSError:
+                        pass
+                if attempt + 1 >= attempts or not _is_retryable_download_error(exc):
+                    raise
+        if last_exc:
+            raise last_exc
 
 
 def _pick_release_asset(assets: list) -> str:
@@ -126,36 +357,28 @@ class UpdateDownloaderThread(QThread):
 
             save_path = os.path.join(self.save_dir, file_name)
 
-            req = urllib.request.Request(
+            downloader = _ParallelDownloader(
                 self.url,
-                headers={"User-Agent": "Mozilla/5.0 FormatFactory/1.0"}
+                save_path,
+                progress_cb=lambda done, total: self.progress.emit(done, total),
+                cancel_cb=lambda: self._is_cancelled,
             )
-            with urllib.request.urlopen(req, timeout=15) as response:
-                total_size = int(response.info().get("Content-Length", 0))
-                bytes_read = 0
-                chunk_size = 8192
+            downloader.download()
 
-                with open(save_path, "wb") as f:
-                    while True:
-                        if self._is_cancelled:
-                            f.close()
-                            if os.path.exists(save_path):
-                                os.remove(save_path)
-                            self.finished.emit("", "cancelled")
-                            return
-
-                        chunk = response.read(chunk_size)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        bytes_read += len(chunk)
-
-                        if total_size > 0:
-                            self.progress.emit(bytes_read, total_size)
+            if self._is_cancelled:
+                if os.path.exists(save_path):
+                    os.remove(save_path)
+                self.finished.emit("", "cancelled")
+                return
 
             self.finished.emit(save_path, "")
 
         except Exception as e:
+            if os.path.exists(save_path):
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
             self.finished.emit("", str(e))
 
 
@@ -217,23 +440,14 @@ class FFmpegDownloadThread(QThread):
         url = item["url"]
         file_name = item.get("filename") or (url.split("/")[-1] or f"ffmpeg_{index}")
         archive_path = os.path.join(self.cache_dir, file_name)
-
-        req = urllib.request.Request(
+        downloader = _ParallelDownloader(
             url,
-            headers={"User-Agent": "Mozilla/5.0 FormatFactory/1.0"})
-        with urllib.request.urlopen(req, timeout=20) as response:
-            total_size = int(response.info().get("Content-Length", 0))
-            bytes_read = 0
-            with open(archive_path, "wb") as f:
-                while True:
-                    self._check_cancelled()
-                    chunk = response.read(1024 * 128)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    bytes_read += len(chunk)
-                    stage = f"download:{index}:{total_items}"
-                    self.progress.emit(bytes_read, total_size, stage)
+            archive_path,
+            progress_cb=lambda done, total: self.progress.emit(done, total, f"download:{index}:{total_items}"),
+            cancel_cb=lambda: self._is_cancelled,
+        )
+        downloader.download()
+        self._check_cancelled()
         return archive_path
 
     def _extract_archive(self, archive_path: str, extract_root: str):

@@ -2,6 +2,7 @@
 import os
 import html as _html_mod
 import shlex
+import re as _re
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
@@ -104,6 +105,12 @@ class ArgsPanel(QWidget):
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
             ("快速压缩 (H.264 CRF28)",     ["-crf", "28"]),
+            ("高压缩 (H.264 CRF32)",       ["-crf", "32", "-c:a", "aac", "-b:a", "128k"]),
+            ("极小体积 (H.265 CRF34)",     ["-c:v", "libx265", "-preset", "slow",
+                                            "-crf", "34", "-c:a", "aac", "-b:a", "96k"]),
+            ("移动端省空间 (720p)",        ["-vf", "scale=-2:720:flags=lanczos",
+                                            "-c:v", "libx264", "-preset", "medium",
+                                            "-crf", "30", "-c:a", "aac", "-b:a", "96k"]),
             ("平衡压缩 (H.265 CRF26)",     ["-c:v", "libx265", "-preset", "medium",
                                             "-crf", "26", "-c:a", "aac", "-b:a", "160k"]),
             ("极速编码 (ultrafast)",        ["-preset", "ultrafast", "-crf", "23"]),
@@ -121,6 +128,9 @@ class ArgsPanel(QWidget):
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
             ("快速压缩 (H.264 CRF28)",     ["-crf", "28"]),
+            ("高压缩 (H.264 CRF32)",       ["-crf", "32", "-c:a", "aac", "-b:a", "128k"]),
+            ("极小体积 (H.265 CRF34)",     ["-c:v", "libx265", "-preset", "slow",
+                                            "-crf", "34", "-c:a", "aac", "-b:a", "96k"]),
             ("平衡压缩 (H.265 CRF26)",     ["-c:v", "libx265", "-preset", "medium",
                                             "-crf", "26", "-c:a", "aac", "-b:a", "160k"]),
             ("H.265 / HEVC (CRF28)",       ["-c:v", "libx265", "-preset", "medium",
@@ -129,6 +139,9 @@ class ArgsPanel(QWidget):
                                             "-crf", "22", "-c:a", "aac", "-b:a", "192k"]),
             ("AV1 (libaom, 慢速高压缩)",   ["-c:v", "libaom-av1", "-crf", "35", "-b:v", "0",
                                             "-c:a", "libopus", "-b:a", "128k"]),
+            ("AV1 极限压缩 (CRF42)",       ["-c:v", "libaom-av1", "-cpu-used", "4",
+                                            "-crf", "42", "-b:v", "0",
+                                            "-c:a", "libopus", "-b:a", "96k"]),
             ("无损 (H.264 lossless)",      ["-c:v", "libx264", "-preset", "medium",
                                             "-crf", "0", "-c:a", "flac"]),
             ("无损存档 (FFV1 + FLAC)",     ["-c:v", "ffv1", "-level", "3",
@@ -140,6 +153,11 @@ class ArgsPanel(QWidget):
         "mov": [
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
+            ("高压缩 (H.264 CRF30)",       ["-c:v", "libx264", "-preset", "medium",
+                                            "-crf", "30", "-c:a", "aac", "-b:a", "128k"]),
+            ("预览小样 (960px)",           ["-vf", "scale=960:-2:flags=lanczos",
+                                            "-c:v", "libx264", "-preset", "medium",
+                                            "-crf", "32", "-c:a", "aac", "-b:a", "96k"]),
             ("ProRes 422 (专业剪辑)",      ["-c:v", "prores_ks", "-profile:v", "2",
                                             "-c:a", "pcm_s16le"]),
             ("ProRes 4444 (最高质量)",     ["-c:v", "prores_ks", "-profile:v", "4",
@@ -158,6 +176,10 @@ class ArgsPanel(QWidget):
                                           "-c:a", "libmp3lame", "-b:a", "192k"]),
             ("小体积 (MPEG-4 Q7)",        ["-c:v", "mpeg4", "-q:v", "7",
                                            "-c:a", "libmp3lame", "-q:a", "5"]),
+            ("高压缩 (MPEG-4 Q10)",       ["-c:v", "mpeg4", "-q:v", "10",
+                                           "-c:a", "libmp3lame", "-q:a", "7"]),
+            ("极小体积 (H.264 CRF32)",    ["-c:v", "libx264", "-preset", "medium",
+                                           "-crf", "32", "-c:a", "libmp3lame", "-b:a", "96k"]),
             ("仅视频流 (去除音频)",        ["-c:v", "copy", "-an"]),
             ("仅复制流 (超快无重编码)",    ["-c", "copy"]),
             ("自定义…",                   "__custom__"),
@@ -170,6 +192,9 @@ class ArgsPanel(QWidget):
                                             "-c:a", "libopus", "-b:a", "96k"]),
             ("极致压缩 (VP9 CRF48)",       ["-c:v", "libvpx-vp9", "-crf", "48", "-b:v", "0",
                                             "-c:a", "libopus", "-b:a", "64k"]),
+            ("网页分享小体积 (VP9 720p)",  ["-vf", "scale=-2:720:flags=lanczos",
+                                            "-c:v", "libvpx-vp9", "-crf", "44", "-b:v", "0",
+                                            "-c:a", "libopus", "-b:a", "64k"]),
             ("AV1 (libaom, 慢速高压缩)",   ["-c:v", "libaom-av1", "-crf", "35", "-b:v", "0",
                                             "-c:a", "libopus", "-b:a", "128k"]),
             ("仅视频流 (去除音频)",         ["-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-an"]),
@@ -181,6 +206,11 @@ class ArgsPanel(QWidget):
                                             "-crf", "18", "-c:a", "aac", "-b:a", "192k"]),
             ("低码率 (CRF28)",             ["-c:v", "libx264", "-preset", "fast",
                                             "-crf", "28", "-c:a", "aac", "-b:a", "96k"]),
+            ("高压缩 (CRF32)",             ["-c:v", "libx264", "-preset", "medium",
+                                            "-crf", "32", "-c:a", "aac", "-b:a", "80k"]),
+            ("直播回放小体积 (480p)",      ["-vf", "scale=-2:480:flags=lanczos",
+                                            "-c:v", "libx264", "-preset", "medium",
+                                            "-crf", "31", "-c:a", "aac", "-b:a", "64k"]),
             ("仅复制流 (超快无重编码)",     ["-c", "copy"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -211,6 +241,9 @@ class ArgsPanel(QWidget):
             ("标准 VBR (V4)",              ["-c:a", "libmp3lame", "-q:a", "4"]),
             ("低码率 (128k)",              ["-b:a", "128k"]),
             ("低码率 (96k)",               ["-b:a", "96k"]),
+            ("小体积 (80k)",               ["-b:a", "80k"]),
+            ("极小体积 (64k)",             ["-b:a", "64k"]),
+            ("播客/语音 (48k 单声道)",     ["-ac", "1", "-b:a", "48k"]),
             ("语音压缩 (64k 单声道)",      ["-ac", "1", "-b:a", "64k"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
@@ -221,6 +254,8 @@ class ArgsPanel(QWidget):
             ("无损 ALAC (Apple Lossless)", ["-c:a", "alac"]),
             ("低码率 (AAC 128k)",          ["-b:a", "128k"]),
             ("HE-AAC 小体积 (64k)",        ["-c:a", "aac", "-b:a", "64k"]),
+            ("HE-AAC 极小体积 (48k)",      ["-c:a", "aac", "-b:a", "48k", "-ac", "1"]),
+            ("语音备忘录 (32k 单声道)",    ["-c:a", "aac", "-b:a", "32k", "-ac", "1"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
         ],
@@ -229,6 +264,8 @@ class ArgsPanel(QWidget):
             ("高质量 (320k)",              ["-b:a", "320k"]),
             ("标准 (128k)",               ["-b:a", "128k"]),
             ("低码率 (96k)",               ["-b:a", "96k"]),
+            ("小体积 (64k)",               ["-b:a", "64k"]),
+            ("极小体积 (48k 单声道)",      ["-b:a", "48k", "-ac", "1"]),
             ("语音压缩 (64k 单声道)",      ["-ac", "1", "-b:a", "64k"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
@@ -255,6 +292,8 @@ class ArgsPanel(QWidget):
             ("高质量 (Q8)",                ["-c:a", "libvorbis", "-q:a", "8"]),
             ("标准 (Q6)",                  ["-c:a", "libvorbis", "-q:a", "6"]),
             ("低码率 (Q2)",                ["-c:a", "libvorbis", "-q:a", "2"]),
+            ("小体积 (Q1)",                ["-c:a", "libvorbis", "-q:a", "1"]),
+            ("极小体积 (Q0 单声道)",       ["-c:a", "libvorbis", "-q:a", "0", "-ac", "1"]),
             ("语音压缩 (Q1 单声道)",       ["-c:a", "libvorbis", "-q:a", "1", "-ac", "1"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
@@ -265,6 +304,8 @@ class ArgsPanel(QWidget):
             ("标准 (128k)",               ["-c:a", "libopus", "-b:a", "128k"]),
             ("低码率 (64k)",               ["-c:a", "libopus", "-b:a", "64k"]),
             ("极低码率 (32k)",             ["-c:a", "libopus", "-b:a", "32k"]),
+            ("超低码率 (24k)",             ["-c:a", "libopus", "-b:a", "24k"]),
+            ("通话/语音 (16k 单声道)",     ["-c:a", "libopus", "-b:a", "16k", "-ac", "1"]),
             ("语音模式 (24k 单声道)",      ["-c:a", "libopus", "-b:a", "24k", "-ac", "1"]),
             ("仅提取音频 (复制流)",         ["-c:a", "copy", "-vn"]),
             ("自定义…",                    "__custom__"),
@@ -276,32 +317,46 @@ class ArgsPanel(QWidget):
             ("标准 (Q3)",                  ["-q:v", "3"]),
             ("压缩 (Q5)",                  ["-q:v", "5"]),
             ("高压缩 (Q8)",                ["-q:v", "8"]),
+            ("极限压缩 (Q12)",             ["-q:v", "12"]),
+            ("无损尺寸适配 (1920px 宽)",    ["-vf", "scale=1920:-1:flags=lanczos", "-q:v", "2"]),
+            ("无损尺寸适配 (1280px 宽)",    ["-vf", "scale=1280:-1:flags=lanczos", "-q:v", "2"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos", "-q:v", "2"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos", "-q:v", "2"]),
             ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos",  "-q:v", "2"]),
             ("缩放 512px 宽",              ["-vf", "scale=512:-1:flags=lanczos",  "-q:v", "3"]),
+            ("缩放 256px 宽 (缩略图)",      ["-vf", "scale=256:-1:flags=lanczos", "-q:v", "5"]),
             ("自定义…",                    "__custom__"),
         ],
         "png": [
             ("默认",                       []),
             ("最大压缩 (级别 9)",           ["-compression_level", "9"]),
+            ("高压缩 (级别 8)",             ["-compression_level", "8"]),
             ("无压缩 (级别 0)",             ["-compression_level", "0"]),
             ("无损压缩 (级别 6)",           ["-compression_level", "6"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos"]),
             ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos"]),
             ("缩放 512px 宽",              ["-vf", "scale=512:-1:flags=lanczos"]),
+            ("缩放 256px 宽 (缩略图)",      ["-vf", "scale=256:-1:flags=lanczos"]),
+            ("网页轻量图 (1280px 无损)",    ["-vf", "scale=1280:-1:flags=lanczos",
+                                            "-compression_level", "9"]),
             ("自定义…",                    "__custom__"),
         ],
         "webp": [
             ("默认 (Q85)",                 []),
             ("高质量 (Q95)",               ["-quality", "95"]),
             ("无损 WebP",                  ["-lossless", "1", "-compression_level", "6"]),
+            ("无损 WebP (最大压缩)",        ["-lossless", "1", "-compression_level", "6",
+                                            "-quality", "100"]),
+            ("无损尺寸适配 (1280px 宽)",    ["-vf", "scale=1280:-1:flags=lanczos",
+                                            "-lossless", "1", "-compression_level", "6"]),
             ("有损压缩 (Q60)",             ["-quality", "60"]),
             ("极小体积 (Q40)",             ["-quality", "40"]),
+            ("超小体积 (Q25)",             ["-quality", "25"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos", "-quality", "85"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos", "-quality", "85"]),
             ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos",  "-quality", "85"]),
+            ("缩放 512px 宽 (分享图)",      ["-vf", "scale=512:-1:flags=lanczos", "-quality", "60"]),
             ("自定义…",                    "__custom__"),
         ],
         "bmp": [
@@ -310,6 +365,7 @@ class ArgsPanel(QWidget):
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos"]),
             ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos"]),
             ("缩放 512px 宽",              ["-vf", "scale=512:-1:flags=lanczos"]),
+            ("缩放 256px 宽 (图标草稿)",    ["-vf", "scale=256:-1:flags=lanczos"]),
             ("自定义…",                    "__custom__"),
         ],
         "tiff": [
@@ -317,8 +373,13 @@ class ArgsPanel(QWidget):
             ("LZW 无损压缩",               ["-compression_algo", "lzw"]),
             ("Deflate 压缩",               ["-compression_algo", "deflate"]),
             ("PackBits 压缩",              ["-compression_algo", "packbits"]),
+            ("LZW 无损 + 1920px 适配",      ["-vf", "scale=1920:-1:flags=lanczos",
+                                            "-compression_algo", "lzw"]),
+            ("Deflate 无损 + 1280px 适配",  ["-vf", "scale=1280:-1:flags=lanczos",
+                                            "-compression_algo", "deflate"]),
             ("缩放 1920px 宽",             ["-vf", "scale=1920:-1:flags=lanczos"]),
             ("缩放 1280px 宽",             ["-vf", "scale=1280:-1:flags=lanczos"]),
+            ("缩放 800px 宽",              ["-vf", "scale=800:-1:flags=lanczos"]),
             ("自定义…",                    "__custom__"),
         ],
         "ico": [
@@ -336,6 +397,7 @@ class ArgsPanel(QWidget):
         "video": [
             ("默认 (H.264 CRF23)",        []),
             ("高质量 (H.264 CRF18)",       ["-crf", "18"]),
+            ("高压缩 (H.264 CRF30)",       ["-crf", "30", "-c:a", "aac", "-b:a", "128k"]),
             ("平衡压缩 (H.265 CRF26)",     ["-c:v", "libx265", "-preset", "medium",
                                             "-crf", "26", "-c:a", "aac", "-b:a", "160k"]),
             ("仅复制流 (超快无重编码)",     ["-c", "copy"]),
@@ -345,11 +407,14 @@ class ArgsPanel(QWidget):
             ("默认 (192k)",               []),
             ("高质量 (320k)",              ["-b:a", "320k"]),
             ("低码率 (96k)",               ["-b:a", "96k"]),
+            ("小体积 (64k)",               ["-b:a", "64k"]),
             ("语音压缩 (64k 单声道)",      ["-ac", "1", "-b:a", "64k"]),
             ("自定义…",                    "__custom__"),
         ],
         "image": [
             ("默认",                       []),
+            ("高压缩",                     ["-q:v", "8"]),
+            ("缩放 512px 宽",              ["-vf", "scale=512:-1:flags=lanczos"]),
             ("自定义…",                    "__custom__"),
         ],
         "m3u8": [
@@ -961,6 +1026,20 @@ class BaseConverterPage(QWidget):
         return args
 
     @staticmethod
+    def _extract_ico_scale_from_args(args: list) -> int | None:
+        for idx, tok in enumerate(args[:-1]):
+            if tok != "-vf":
+                continue
+            vf = str(args[idx + 1] or "")
+            match = _re.search(r"scale=(\d+):(\d+)", vf)
+            if match:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    return None
+        return None
+
+    @staticmethod
     def _replace_or_append_arg(args: list, option: str, value: str) -> list:
         fixed = list(args)
         for i, tok in enumerate(fixed[:-1]):
@@ -1148,9 +1227,13 @@ class BaseConverterPage(QWidget):
         elif self.media_type == "image":
             ext = next(iter(caps["extensions"]), "")
             wide = max(caps["widths"]) if caps["widths"] else 0
+            high = max(caps["heights"]) if caps["heights"] else 0
+            max_dim = max(wide, high)
             has_alpha_source = ext in {"png", "webp", "tiff", "ico"}
             if fmt == "png" and "无压缩" in name and ext not in {"png"}:
                 state.update(enabled=False, reason="当前源文件不适合输出无压缩 PNG。")
+            elif fmt == "ico" and ("1920px" in name or "1280px" in name or "800px" in name):
+                state.update(enabled=False, reason="ICO 预设应使用固定图标尺寸，不适合通用宽度缩放。")
             elif fmt == "bmp" and "默认" in name:
                 state.update(enabled=False, reason="BMP 基本不压缩，不适合作为压缩输出。")
             elif fmt == "jpg" and has_alpha_source and ("默认" in name or "高质量" in name or "标准" in name):
@@ -1163,6 +1246,17 @@ class BaseConverterPage(QWidget):
                 state.update(enabled=False, reason="源图宽度已经不超过 1280px。")
             elif "1920px" in name and wide and wide <= 1920:
                 state.update(enabled=False, reason="源图宽度已经不超过 1920px。")
+            elif fmt == "ico":
+                if "256x256" in name and max_dim >= 256:
+                    state["recommended"] = True
+                elif "128x128" in name and 128 <= max_dim < 256:
+                    state["recommended"] = True
+                elif "64x64" in name and 64 <= max_dim < 128:
+                    state["recommended"] = True
+                elif "32x32" in name and 32 <= max_dim < 64:
+                    state["recommended"] = True
+                elif "16x16" in name and max_dim < 32:
+                    state["recommended"] = True
             elif ("q5" in name or "q8" in name or "q40" in name or "最大压缩" in name) and caps["extensions"]:
                 state["recommended"] = True
             elif "无损 webp" in name and has_alpha_source:
@@ -1251,7 +1345,7 @@ class BaseConverterPage(QWidget):
         import colorsys
         is_dark = getattr(self, "_is_dark", False)
         bg      = getattr(self, "_bg_colors", {})
-        dom_hue = bg.get("dom_hue", 0.0)   # 0.0 = 无背景 / 无彩色
+        dom_hue = bg.get("avg_hue", 0.0)   # 0.0 = 无背景 / 无彩色
 
         # ── 无背景：用固定调色板 ──────────────────────────────────────
         if not dom_hue and not bg.get("complement_hex"):
@@ -1369,6 +1463,10 @@ class BaseConverterPage(QWidget):
     def _update_state(self):
         ok = bool(self.input_files and self.output_dir
                   and self.output_format_combo.currentText())
+        self.start_conversion_button.setToolTip("")
+        if not self.ffmpeg_handler:
+            ok = False
+            self.start_conversion_button.setToolTip("未找到 FFmpeg，请到设置下载 FFmpeg")
         self.start_conversion_button.setEnabled(ok)
 
     def _update_combo(self):

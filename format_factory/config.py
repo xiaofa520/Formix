@@ -77,6 +77,10 @@ def get_ffmpeg_download_spec() -> dict:
                     "url": "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip",
                     "filename": "ffprobe-macos.zip",
                 },
+                {
+                    "url": "https://evermeet.cx/ffmpeg/getrelease/ffplay/zip",
+                    "filename": "ffplay-macos.zip",
+                },
             ],
         }
 

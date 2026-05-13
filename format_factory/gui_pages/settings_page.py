@@ -3,16 +3,23 @@
 设置页  —  手动选择 GPU 厂商（无自动检测），双列布局。
 """
 import os
+import webbrowser
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QComboBox, QFileDialog, QCheckBox,
-    QFrame, QSizePolicy, QScrollArea, QButtonGroup, QSlider
+    QFrame, QSizePolicy, QScrollArea, QButtonGroup, QSlider, QLineEdit,
+    QTextBrowser
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtCore import pyqtSignal, Qt, QSize
+from PyQt6.QtGui import QPixmap, QFont, QIcon, QPainter
+try:
+    from PyQt6.QtSvg import QSvgRenderer
+except ImportError:  # pragma: no cover - QtSvg may be unavailable in some environments
+    QSvgRenderer = None
 
 from .base_page import CardWidget, SectionLabel, NoWheelComboBox, _BTN_H, _CTRL_H
 from ..config import APP_VERSION
+from ..daily_wallpaper import normalize_custom_api_url
 from ..i18n import (
     LANGUAGE_LABELS, LANG_AUTO, LANG_ZH_CN, LANG_ZH_TW,
     LANG_EN, LANG_JA, LANG_KO, tr,
@@ -43,6 +50,9 @@ GPU_ENCODERS = {
                "supported_roles": {"h264", "hevc"}},
 }
 
+PROJECT_URL = "https://github.com/xiaofa520/Formix"
+PROJECT_LINK_SVG = """<svg t="1778631030424" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2541" width="200" height="200"><path d="M950.930286 512q0 143.433143-83.748571 257.974857t-216.283429 158.573714q-15.433143 2.852571-22.601143-4.022857t-7.168-17.115429l0-120.539429q0-55.442286-29.696-81.115429 32.548571-3.437714 58.587429-10.313143t53.686857-22.308571 46.299429-38.034286 30.281143-59.977143 11.702857-86.016q0-69.12-45.129143-117.686857 21.138286-52.004571-4.534857-116.589714-16.018286-5.12-46.299429 6.290286t-52.589714 25.161143l-21.723429 13.677714q-53.174857-14.848-109.714286-14.848t-109.714286 14.848q-9.142857-6.290286-24.283429-15.433143t-47.689143-22.016-49.152-7.68q-25.161143 64.585143-4.022857 116.589714-45.129143 48.566857-45.129143 117.686857 0 48.566857 11.702857 85.723429t29.988571 59.977143 46.006857 38.253714 53.686857 22.308571 58.587429 10.313143q-22.820571 20.553143-28.013714 58.88-11.995429 5.705143-25.746286 8.557714t-32.548571 2.852571-37.449143-12.288-31.744-35.693714q-10.825143-18.285714-27.721143-29.696t-28.306286-13.677714l-11.410286-1.682286q-11.995429 0-16.603429 2.56t-2.852571 6.582857 5.12 7.972571 7.460571 6.875429l4.022857 2.852571q12.580571 5.705143 24.868571 21.723429t17.993143 29.110857l5.705143 13.165714q7.460571 21.723429 25.161143 35.108571t38.253714 17.115429 39.716571 4.022857 31.744-1.974857l13.165714-2.267429q0 21.723429 0.292571 50.834286t0.292571 30.866286q0 10.313143-7.460571 17.115429t-22.820571 4.022857q-132.534857-44.032-216.283429-158.573714t-83.748571-257.974857q0-119.442286 58.88-220.306286t159.744-159.744 220.306286-58.88 220.306286 58.88 159.744 159.744 58.88 220.306286z" fill="#444444" p-id="2542"></path></svg>"""
+
 
 class SettingsPage(QWidget):
     # ── 所有信号必须在类体顶层 ───────────────────────────────────────
@@ -57,6 +67,8 @@ class SettingsPage(QWidget):
     gpu_vendor_changed   = pyqtSignal(str)
     daily_wallpaper_toggled = pyqtSignal(bool)
     daily_wallpaper_refresh = pyqtSignal()
+    daily_wallpaper_api_changed = pyqtSignal(str)
+    daily_wallpaper_refresh_days_changed = pyqtSignal(object)
     check_update_requested  = pyqtSignal()
     download_ffmpeg_requested = pyqtSignal()
 
@@ -65,7 +77,10 @@ class SettingsPage(QWidget):
                  current_bg_fill_mode="cover",
                  command_line_enabled=False,
                  daily_enabled=False, mask_opacity=20,
-                 current_language=LANG_AUTO, parent=None):
+                 current_language=LANG_AUTO,
+                 daily_api_url="",
+                 daily_refresh_days=1,
+                 parent=None):
         super().__init__(parent)
         self._theme        = current_theme
         self._blur         = current_blur          # 0-20
@@ -76,12 +91,15 @@ class SettingsPage(QWidget):
         self._vendor       = gpu_vendor
         self._is_dark      = (current_theme == "dark")
         self._daily_enabled = daily_enabled
+        self._daily_api_url = str(daily_api_url or "").strip()
+        self._daily_refresh_days = daily_refresh_days if daily_refresh_days in {1, 2, 3, 4, 5, 6, 7, "manual"} else 1
         self._ffmpeg_action = "下载"
         self._language     = current_language or LANG_AUTO
         self._update_status_overridden = False
         self._ffmpeg_status_overridden = False
         self._init_ui()
         self._refresh_daily_ui()
+        self._refresh_daily_controls_visibility()
         self.set_language(self._language)
 
     # ── Public ───────────────────────────────────────────────────────
@@ -122,10 +140,15 @@ class SettingsPage(QWidget):
         root.setContentsMargins(20, 16, 20, 20)
         root.setSpacing(10)
 
-        # ── 第一行：外观  +  GPU 设置（左右并排）
+        # ── 第一行：外观  +  GPU/FFmpeg（左右并排）
         row1 = QHBoxLayout(); row1.setSpacing(10)
         row1.addWidget(self._build_appearance_card(), 5)
-        row1.addWidget(self._build_gpu_card(),        5)
+        gpu_stack = QVBoxLayout()
+        gpu_stack.setContentsMargins(0, 0, 0, 0)
+        gpu_stack.setSpacing(10)
+        gpu_stack.addWidget(self._build_gpu_card(), 0)
+        gpu_stack.addWidget(self._build_ffmpeg_card(), 0)
+        row1.addLayout(gpu_stack, 5)
         root.addLayout(row1)
 
         # ── 第二行：关于 + 软件更新（左右并排）
@@ -133,10 +156,6 @@ class SettingsPage(QWidget):
         row2.addWidget(self._build_about_card(),  4)
         row2.addWidget(self._build_update_card(), 6)
         root.addLayout(row2)
-
-        row3 = QHBoxLayout(); row3.setSpacing(10)
-        row3.addWidget(self._build_ffmpeg_card(), 10)
-        root.addLayout(row3)
         root.addStretch()
 
     # ── 外观卡片 ─────────────────────────────────────────────────────
@@ -327,6 +346,35 @@ class SettingsPage(QWidget):
         daily_row.addWidget(self.daily_refresh_btn)
         lay.addLayout(daily_row)
 
+        self._daily_api_row_lbl = self._row_label("壁纸 API")
+        lay.addWidget(self._daily_api_row_lbl)
+        self.daily_api_edit = QLineEdit()
+        self.daily_api_edit.setMinimumHeight(_CTRL_H)
+        self.daily_api_edit.setPlaceholderText("https://example.com/wallpaper-api")
+        self.daily_api_edit.setText(self._daily_api_url)
+        self.daily_api_edit.editingFinished.connect(self._on_daily_api_changed)
+        lay.addWidget(self.daily_api_edit)
+
+        self._daily_refresh_days_wrap = QWidget()
+        refresh_row = QHBoxLayout(self._daily_refresh_days_wrap); refresh_row.setSpacing(8); refresh_row.setContentsMargins(0,0,0,0)
+        self._daily_refresh_days_lbl = QLabel("刷新天数")
+        self._daily_refresh_days_lbl.setObjectName("section_title")
+        self.daily_refresh_days_combo = NoWheelComboBox()
+        self.daily_refresh_days_combo.addItem("1 天", 1)
+        self.daily_refresh_days_combo.addItem("2 天", 2)
+        self.daily_refresh_days_combo.addItem("3 天", 3)
+        self.daily_refresh_days_combo.addItem("4 天", 4)
+        self.daily_refresh_days_combo.addItem("5 天", 5)
+        self.daily_refresh_days_combo.addItem("6 天", 6)
+        self.daily_refresh_days_combo.addItem("7 天", 7)
+        self.daily_refresh_days_combo.addItem("永久", "manual")
+        idx = self.daily_refresh_days_combo.findData(self._daily_refresh_days)
+        self.daily_refresh_days_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.daily_refresh_days_combo.currentIndexChanged.connect(self._on_daily_refresh_days_changed)
+        refresh_row.addWidget(self._daily_refresh_days_lbl)
+        refresh_row.addWidget(self.daily_refresh_days_combo, 1)
+        lay.addWidget(self._daily_refresh_days_wrap)
+
         self.daily_status_lbl = QLabel("未启用")
         self.daily_status_lbl.setObjectName("section_title")
         self.daily_status_lbl.setWordWrap(True)
@@ -383,13 +431,12 @@ class SettingsPage(QWidget):
         lay.addLayout(row_a)
         lay.addLayout(row_b)
 
-        lay.addWidget(self._div())
-
         # 当前状态标签
         self._gpu_status_lbl = QLabel()
         self._gpu_status_lbl.setWordWrap(True)
         self._gpu_status_lbl.setObjectName("section_title")
         lay.addWidget(self._gpu_status_lbl)
+        lay.addWidget(self._div())
 
         # 编码器信息网格
         enc_grid = QGridLayout(); enc_grid.setSpacing(4)
@@ -406,6 +453,28 @@ class SettingsPage(QWidget):
             enc_grid.addWidget(v,   r, 1)
 
         lay.addLayout(enc_grid)
+        lay.addWidget(self._div())
+
+        self._project_link_card = QFrame()
+        self._project_link_card.setObjectName("gpu_link_card")
+        project_row = QHBoxLayout(self._project_link_card)
+        project_row.setContentsMargins(10, 8, 10, 8)
+        project_row.setSpacing(8)
+        self._project_link_hint = QLabel("项目地址")
+        self._project_link_hint.setObjectName("section_title")
+        self._project_link_btn = QPushButton()
+        self._project_link_btn.setObjectName("icon_link_button")
+        self._project_link_btn.setToolTip(PROJECT_URL)
+        self._project_link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._project_link_btn.setFixedSize(32, 32)
+        self._project_link_btn.setIcon(self._make_project_link_icon())
+        self._project_link_btn.setIconSize(QSize(18, 18))
+        self._project_link_btn.clicked.connect(lambda: webbrowser.open(PROJECT_URL))
+        project_row.addWidget(self._project_link_hint)
+        project_row.addStretch()
+        project_row.addWidget(self._project_link_btn)
+        lay.addWidget(self._project_link_card)
+
         lay.addStretch()
 
         # 初始刷新
@@ -422,6 +491,26 @@ class SettingsPage(QWidget):
         btn.setObjectName(f"vendor_btn_{vendor}")
         btn.clicked.connect(lambda _=False, v=vendor: self._set_vendor(v))
         return btn
+
+    @staticmethod
+    def _make_project_link_icon() -> QIcon:
+        if QSvgRenderer is not None:
+            renderer = QSvgRenderer(bytearray(PROJECT_LINK_SVG, "utf-8"))
+            if renderer.isValid():
+                pixmap = QPixmap(64, 64)
+                pixmap.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(pixmap)
+                renderer.render(painter)
+                painter.end()
+                return QIcon(pixmap)
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "assets",
+            "logo.ico",
+        )
+        if os.path.isfile(icon_path):
+            return QIcon(icon_path)
+        return QIcon()
 
     # ── 关于卡片 ─────────────────────────────────────────────────────
     def _build_about_card(self) -> CardWidget:
@@ -475,12 +564,11 @@ class SettingsPage(QWidget):
         # 更新公告区（带滚动条）
         self._update_notes_title = self._row_label("更新公告")
         lay.addWidget(self._update_notes_title)
-        self._update_notes_lbl = QLabel("")
-        self._update_notes_lbl.setObjectName("section_title")
-        self._update_notes_lbl.setTextFormat(Qt.TextFormat.RichText)
-        self._update_notes_lbl.setWordWrap(True)
-        self._update_notes_lbl.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self._update_notes_lbl = QTextBrowser()
+        self._update_notes_lbl.setObjectName("update_notes_browser")
+        self._update_notes_lbl.setOpenExternalLinks(True)
+        self._update_notes_lbl.setReadOnly(True)
+        self._update_notes_lbl.setFrameShape(QFrame.Shape.NoFrame)
         self._update_notes_lbl.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
@@ -629,10 +717,49 @@ class SettingsPage(QWidget):
     def _on_daily_toggle(self):
         self._daily_enabled = not self._daily_enabled
         self._refresh_daily_ui()
+        self._refresh_daily_controls_visibility()
         self.daily_wallpaper_toggled.emit(self._daily_enabled)
 
     def _on_daily_refresh(self):
+        self._apply_daily_api_value()
         self.daily_wallpaper_refresh.emit()
+
+    def _on_daily_api_changed(self):
+        self._apply_daily_api_value()
+
+    def _apply_daily_api_value(self) -> str:
+        if not hasattr(self, "daily_api_edit"):
+            return ""
+        value = self.daily_api_edit.text().strip()
+
+        normalized, err = normalize_custom_api_url(value)
+        if value and err:
+            if err == "multiple_links":
+                self.set_daily_status("❌ 壁纸 API 只能填写一个链接，不能包含空格或多个地址。")
+            else:
+                self.set_daily_status("❌ 壁纸 API 格式无效，请输入单个 http/https 链接。")
+            self.daily_api_edit.blockSignals(True)
+            self.daily_api_edit.setText(self._daily_api_url)
+            self.daily_api_edit.blockSignals(False)
+            return self._daily_api_url
+
+        if normalized == self._daily_api_url:
+            return normalized
+
+        self._daily_api_url = normalized
+        self.daily_api_edit.blockSignals(True)
+        self.daily_api_edit.setText(normalized)
+        self.daily_api_edit.blockSignals(False)
+        self._refresh_daily_controls_visibility()
+        self.daily_wallpaper_api_changed.emit(normalized)
+        return normalized
+
+    def _on_daily_refresh_days_changed(self, idx: int):
+        if not hasattr(self, "daily_refresh_days_combo"):
+            return
+        value = self.daily_refresh_days_combo.itemData(idx)
+        self._daily_refresh_days = value if value in {1, 2, 3, 4, 5, 6, 7, "manual"} else 1
+        self.daily_wallpaper_refresh_days_changed.emit(self._daily_refresh_days)
 
     def _refresh_daily_ui(self):
         if self._daily_enabled:
@@ -646,10 +773,32 @@ class SettingsPage(QWidget):
         if hasattr(self, "daily_refresh_btn"):
             self.daily_refresh_btn.setText(tr(self._language, "daily_refresh"))
 
+    def _refresh_daily_controls_visibility(self):
+        has_api = bool(self._daily_api_url.strip())
+        visible = bool(self._daily_enabled and has_api)
+        if hasattr(self, "_daily_refresh_days_wrap"):
+            self._daily_refresh_days_wrap.setVisible(visible)
+
     def set_daily_status(self, msg: str):
         """由 MainWindow 调用，更新状态文字。"""
         if hasattr(self, "daily_status_lbl"):
             self.daily_status_lbl.setText(msg)
+
+    def set_daily_api_url(self, api_url: str):
+        self._daily_api_url = str(api_url or "").strip()
+        if hasattr(self, "daily_api_edit"):
+            self.daily_api_edit.blockSignals(True)
+            self.daily_api_edit.setText(self._daily_api_url)
+            self.daily_api_edit.blockSignals(False)
+        self._refresh_daily_controls_visibility()
+
+    def set_daily_refresh_days(self, refresh_days):
+        self._daily_refresh_days = refresh_days if refresh_days in {1, 2, 3, 4, 5, 6, 7, "manual"} else 1
+        if hasattr(self, "daily_refresh_days_combo"):
+            idx = self.daily_refresh_days_combo.findData(self._daily_refresh_days)
+            self.daily_refresh_days_combo.blockSignals(True)
+            self.daily_refresh_days_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self.daily_refresh_days_combo.blockSignals(False)
 
     def set_daily_bg_preview(self, path: str):
         """壁纸下载完成后更新背景图预览。"""
@@ -751,7 +900,40 @@ class SettingsPage(QWidget):
             self._daily_section.setText(tr(lang, "daily_wallpaper"))
         if hasattr(self, "daily_info"):
             self.daily_info.setText(tr(lang, "daily_wallpaper_info"))
+        if hasattr(self, "_daily_api_row_lbl"):
+            self._daily_api_row_lbl.setText("壁纸 API" if lang != LANG_EN else "Wallpaper API")
+        if hasattr(self, "daily_api_edit"):
+            self.daily_api_edit.setPlaceholderText(
+                "https://example.com/wallpaper-api"
+                if lang == LANG_EN else "https://example.com/wallpaper-api"
+            )
+        if hasattr(self, "_daily_refresh_days_lbl"):
+            self._daily_refresh_days_lbl.setText("刷新天数" if lang != LANG_EN else "Refresh days")
+        if hasattr(self, "daily_refresh_days_combo"):
+            current = self._daily_refresh_days
+            items = [
+                ("1 天" if lang != LANG_EN else "1 day", 1),
+                ("2 天" if lang != LANG_EN else "2 days", 2),
+                ("3 天" if lang != LANG_EN else "3 days", 3),
+                ("4 天" if lang != LANG_EN else "4 days", 4),
+                ("5 天" if lang != LANG_EN else "5 days", 5),
+                ("6 天" if lang != LANG_EN else "6 days", 6),
+                ("7 天" if lang != LANG_EN else "7 days", 7),
+                ("永久" if lang != LANG_EN else "Permanent", "manual"),
+            ]
+            self.daily_refresh_days_combo.blockSignals(True)
+            self.daily_refresh_days_combo.clear()
+            for text, value in items:
+                self.daily_refresh_days_combo.addItem(text, value)
+            idx = self.daily_refresh_days_combo.findData(current)
+            self.daily_refresh_days_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self.daily_refresh_days_combo.blockSignals(False)
+        if hasattr(self, "_project_link_hint"):
+            self._project_link_hint.setText("项目地址" if lang != LANG_EN else "Project")
+        if hasattr(self, "_project_link_btn"):
+            self._project_link_btn.setToolTip(PROJECT_URL)
         self._refresh_daily_ui()
+        self._refresh_daily_controls_visibility()
         if hasattr(self, "_gpu_section"):
             self._gpu_section.setText(tr(lang, "settings_gpu"))
         if hasattr(self, "_gpu_info_lbl"):
@@ -829,7 +1011,7 @@ class SettingsPage(QWidget):
     def set_update_notes(self, notes: str):
         """由 MainWindow 调用，在更新公告区显示版本说明。"""
         if hasattr(self, "_update_notes_lbl"):
-            self._update_notes_lbl.setText(notes)
+            self._update_notes_lbl.setMarkdown(notes or "")
 
     def set_ffmpeg_status(self, msg: str, downloading: bool = False):
         self._ffmpeg_status_overridden = True

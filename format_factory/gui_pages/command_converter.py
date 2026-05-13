@@ -549,20 +549,20 @@ class CommandConverterPage(QWidget):
             self._theme_meta_color = "#C4B5FD"
             self._theme_banner_color = "#FFE08A"
         else:
-            text = "#111111"
-            muted = "#2F2A24"
-            accent = "#1F2937"
-            terminal_bg = "rgba(255,255,255,0.30)"
-            selection_bg = "rgba(31,41,55,0.18)"
+            text = "#111827"
+            muted = "#4B5563"
+            accent = "#0F172A"
+            terminal_bg = "rgba(255,255,255,0.72)"
+            selection_bg = "rgba(30,41,59,0.18)"
             self._theme_text_color = text
             self._theme_muted_color = muted
             self._theme_accent_color = accent
-            self._theme_info_color = "#111827"
-            self._theme_warn_color = "#7C2D12"
-            self._theme_error_color = "#7F1D1D"
-            self._theme_success_color = "#14532D"
-            self._theme_cmd_color = "#111827"
-            self._theme_meta_color = "#374151"
+            self._theme_info_color = "#1D4ED8"
+            self._theme_warn_color = "#9A3412"
+            self._theme_error_color = "#B91C1C"
+            self._theme_success_color = "#15803D"
+            self._theme_cmd_color = "#0F172A"
+            self._theme_meta_color = "#6D28D9"
             self._theme_banner_color = "#0F172A"
         self.setStyleSheet(
             f"""
@@ -572,7 +572,8 @@ QWidget {{
 QTextEdit#full_terminal {{
     background: {terminal_bg};
     color: {text};
-    border: none;
+    border: 1px solid rgba(148,163,184,0.28);
+    border-radius: 14px;
     padding: 18px 22px;
     selection-background-color: {selection_bg};
     selection-color: {text};
@@ -730,6 +731,11 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         window = self.window()
         if window is None:
             return ""
+        handler = self.ffmpeg_handler
+        if self._active or (handler is not None and getattr(handler, "is_busy", None) and handler.is_busy()):
+            active_page = getattr(window, "_active_ffmpeg_page", lambda: None)()
+            if active_page is not None and active_page is not self:
+                return "当前已有转换任务在运行，请等待完成或先取消后再执行命令。"
         if hasattr(window, "command_page_busy_reason"):
             try:
                 return window.command_page_busy_reason(self) or ""

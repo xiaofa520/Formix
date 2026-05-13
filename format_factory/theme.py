@@ -15,9 +15,9 @@ LIGHT_THEME = {
     "window_bg":      "#EDEEF4",
     "card_no_img":    "rgba(255,255,255,0.92)",
     "card_img":       "rgba(255,255,255,0.18)",
-    "tp":             "#151514",
-    "ts":             "#151514",
-    "tm":             "#4A4A49",
+    "tp":             "#111827",
+    "ts":             "#1F2937",
+    "tm":             "#4B5563",
     "accent":         "#F97316",
     "accent_h":       "#EA580C",
     "accent_p":       "#C2410C",
@@ -27,7 +27,7 @@ LIGHT_THEME = {
     "toggle_light_bg":  "#F97316",
     "toggle_light_txt": "#FFFFFF",
     "toggle_dark_bg":   "transparent",
-    "toggle_dark_txt":  "#151514",
+    "toggle_dark_txt":  "#111827",
     "toggle_dark_border": "rgba(0,0,0,0.18)",
     "cb":             "rgba(0,0,0,0.14)",
     "cf":             "#F97316",
@@ -44,7 +44,7 @@ LIGHT_THEME = {
     "scroll_h":       "rgba(0,0,0,0.26)",
     "status_bg":      "rgba(237,238,244,0.88)",
     "pop_bg":         "#FFFFFF",
-    "pop_txt":        "#151514",
+    "pop_txt":        "#111827",
     "pop_sel":        "rgba(249,115,22,0.13)",
 }
 
@@ -192,12 +192,26 @@ QWidget {{ color:{tp}; font-family:"Microsoft YaHei UI","Microsoft YaHei",
            font-size:13px; font-weight:500; background:transparent; }}
 
 /* ══ Tab bar ══════════════════════════════════════════════════════ */
-QTabWidget       {{ background:transparent; }}
-QTabWidget::pane {{ border:none; background:transparent; padding-top:4px; }}
-QTabBar          {{ background:transparent; qproperty-drawBase:0; }}
+QTabWidget {{
+    background:qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {card_bg},
+        stop:0.085 {card_bg},
+        stop:0.086 transparent,
+        stop:1 transparent
+    );
+}}
+QTabWidget::pane {{ border:none; background:transparent; padding-top:8px; }}
+QTabBar {{
+    background:{card_bg};
+    border:1px solid {cb};
+    border-radius:14px;
+    padding:6px;
+    qproperty-drawBase:0;
+}}
 QTabBar::tab {{
     background:transparent; color:{tp};
-    padding:8px 20px; margin:4px 2px;
+    padding:8px 20px; margin:0 4px 0 0;
     border-radius:8px; font-weight:700; font-size:13px;
     min-width:68px; min-height:22px; border:1px solid transparent;
 }}
@@ -206,6 +220,9 @@ QTabBar::tab:selected {{
     font-weight:700; border:none;
 }}
 QTabBar::tab:hover:!selected {{ border:1px solid {hb}; color:{tp}; }}
+QTabBar::tab:last {{
+    margin-right:0;
+}}
 
 /* ══ Cards ════════════════════════════════════════════════════════ */
 QFrame#card {{
@@ -324,6 +341,29 @@ QPushButton[objectName="vendor_btn_none_active"] {{
     border-radius:8px; min-height:36px; font-weight:700;
 }}
 QPushButton[objectName="vendor_btn_none_active"]:hover {{ border-color:{hb}; }}
+
+QFrame#gpu_link_card {{
+    background: rgba(255,255,255,0.08);
+    border: 1px solid {cb};
+    border-radius: 10px;
+}}
+
+QPushButton#icon_link_button {{
+    background: {bs};
+    border: 1px solid {cb};
+    border-radius: 16px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+}}
+QPushButton#icon_link_button:hover {{
+    background: {bh};
+    border: 1.5px solid {hb};
+}}
+QPushButton#icon_link_button:pressed {{
+    background: {bp};
+    border: 1.5px solid {a};
+}}
 
 /* ══ Inputs ═══════════════════════════════════════════════════════ */
 QLineEdit {{

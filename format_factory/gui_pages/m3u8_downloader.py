@@ -373,9 +373,8 @@ class M3U8DownloaderPage(BaseConverterPage):
                     if a == "%03d.ts":
                         preset_args[i] = os.path.join(seg_dir, "%03d.ts")
                 args = base + preset_args
-            out_path = os.path.join(seg_dir, stem + ".m3u8")
             self.log_message(f"来源: {src}", "info")
-            self.ffmpeg_handler.convert_file(0, src, out_path, args)
+            self.conversion_requested.emit(0, src, args, stem)
         else:
             from format_factory.config import DEFAULT_FFMPEG_ARGS
             protocol_args = ["-protocol_whitelist", "file,http,https,tcp,tls,crypto"]
@@ -392,6 +391,12 @@ class M3U8DownloaderPage(BaseConverterPage):
         has_src = bool(
             self.m3u8_url_edit.text().strip()
             if hasattr(self, "m3u8_url_edit") else False)
+        if hasattr(self, "start_conversion_button"):
+            self.start_conversion_button.setToolTip("")
+            if not self.ffmpeg_handler:
+                self.start_conversion_button.setEnabled(False)
+                self.start_conversion_button.setToolTip("未找到 FFmpeg，请到设置下载 FFmpeg")
+                return
         self.start_conversion_button.setEnabled(
             has_src and bool(self.output_dir))
 
