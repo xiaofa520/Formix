@@ -460,3 +460,13 @@ ffplay "input.mp4"
 - 本项目当前采用 [GPL-3.0](LICENSE) 许可证。
 - 许可证全文请查看项目根目录下的 [LICENSE](LICENSE) 文件。
 - 由于项目功能依赖 FFmpeg，实际分发时也请一并遵守 FFmpeg 及其相关第三方组件的许可证要求。
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=xiaofa520%2FFormix&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xiaofa520/Formix&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xiaofa520/Formix&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=xiaofa520/Formix&type=date&legend=bottom-right" />
+ </picture>
+</a>
