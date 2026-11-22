@@ -589,7 +589,6 @@ class ToolPage(QWidget):
             self.ocr_model_combo.currentIndexChanged.connect(self.ocr_model_changed)
             settings_layout.addWidget(self.ocr_model_combo)
             hint = window.language.bind(QLabel(), "image_ocr_model_hint")
-            hint.setStyleSheet("color: #ffffff;")
             hint.setWordWrap(True)
             hint.setOpenExternalLinks(False)
             hint.linkActivated.connect(lambda _: window.open_ocr_model_settings(self.ocr_model_combo.currentData()))
@@ -2689,41 +2688,29 @@ class Window(QMainWindow):
 
     def refresh_contrast(self):
         canvas = self.canvas
-        active = not canvas.image.isNull() and canvas.image_opacity > 0
-        # Wallpaper text uses one consistent color; per-widget luminance sampling
-        # otherwise overrides the theme with black as the layout or mask changes.
-        white_text = active
-        sheet = "QWidget { color: #ffffff; }" if white_text else ""
+        # Theme owns foreground colors; wallpaper brightness must not override it.
+        ink = "#ffffff" if canvas.dark else "#000000"
+        sheet = f"QWidget {{ color: {ink}; }}"
         if self.styleSheet() != sheet:
             self.setStyleSheet(sheet)
-        plain = canvas.contrast_map(False) if active and not white_text else None
-        glass = canvas.contrast_map(True) if active and not white_text else None
         widgets = [*self.findChildren(QPushButton), *self.findChildren(QLabel)]
         for widget in widgets:
             name = widget.objectName()
             glyph = widget.property("glyph")
+            if isinstance(widget, QLabel) and name == "hint" and 'href="settings"' in widget.text():
+                text = re.sub(r"color:\s*#[0-9a-fA-F]{6}", f"color: {ink}", widget.text())
+                if text != widget.text():
+                    widget.setText(text)
             adaptive_text = name in {"queueStatus", "platformLabel", "navCategory", "navPage",
                                      "fileCount", "muted", "emptyHint"}
             if not adaptive_text and not glyph:
                 continue
-            ink = "#f0f5fc" if canvas.dark else "#293748"
-            if white_text:
-                ink = "#ffffff"
             if adaptive_text:
-                selector = f"#{name}:!checked" if name in {"navPage", "navCategory"} else f"#{name}"
-                sheet = f"{selector} {{ color: {ink}; }}" if active else ""
-                if widget.styleSheet() != sheet:
-                    widget.setStyleSheet(sheet)
+                # Clear old per-widget overrides, including those on hidden pages.
+                if widget.styleSheet():
+                    widget.setStyleSheet("")
             if glyph:
-                if name == "primary" or widget.property("contentAction"):
-                    ink = "#e0e8f2" if canvas.dark else "#28384b"
-                elif name == "logAction":
-                    ink = "#edf3fb" if canvas.dark else "#233142"
-                checked_ink = None
-                if name == "navPage":
-                    checked_ink = "#f0f5fc" if canvas.dark else "#293748"
-                if white_text:
-                    ink = checked_ink = "#ffffff"
+                checked_ink = ink
                 icon = contrast_icon(glyph, ink, checked_ink)
                 if isinstance(widget, QPushButton):
                     if widget.icon().cacheKey() != icon.cacheKey():

@@ -13,6 +13,7 @@ BEGIN
   BLOCK "080404B0"
   BEGIN
    VALUE "FileDescription", "格式转换通"
+   VALUE "CompanyName", "xiaofa520"
    VALUE "ProductName", "格式转换通"
    VALUE "InternalName", "Formix"
    VALUE "OriginalFilename", "Formix.exe"

@@ -7,6 +7,10 @@ SourceDir={#ProjectDir}
 AppId=FormixDesktop
 AppName=格式转换通
 AppVersion={#Version}
+AppPublisher=xiaofa520
+VersionInfoCompany=xiaofa520
+ShowLanguageDialog=yes
+LanguageDetectionMethod=uilanguage
 DefaultDirName={autopf}\Formix
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible arm64
@@ -16,6 +20,14 @@ OutputBaseFilename=Formix-windows-{#BuildArch}
 Compression=lzma2/fast
 SolidCompression=no
 UninstallDisplayIcon={app}\formix\assets\logo.ico
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "zh_CN"; MessagesFile: "packaging/languages/ChineseSimplified.isl"
+Name: "zh_TW"; MessagesFile: "packaging/languages/ChineseTraditional.isl"
+Name: "ja"; MessagesFile: "compiler:Languages/Japanese.isl"
+Name: "ko"; MessagesFile: "compiler:Languages/Korean.isl"
+Name: "ru"; MessagesFile: "compiler:Languages/Russian.isl"
+Name: "fr"; MessagesFile: "compiler:Languages/French.isl"
 [Files]
 Source: "build\windows-{#BuildArch}-app\*"; DestDir: "{app}"; Excludes: "logs\*,cache\*,output\*,models\*,formix\__pycache__\*,*.obj"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "build\vc_redist.{#BuildArch}.exe"; DestDir: "{tmp}"; DestName: "vc_redist.{#BuildArch}.exe"; Flags: deleteafterinstall

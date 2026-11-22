@@ -4,6 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "formix"
+authors = [{name = "xiaofa520"}]
 version = "1.2.9"
 description = "跨平台桌面文件转换工具"
 readme = "README.md"
