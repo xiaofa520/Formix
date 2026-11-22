@@ -1,0 +1,64 @@
+/* The shared sheet supplies geometry and interaction metrics in both appearances. */
+QWidget { color: #edf2f8; }
+QLabel#pageTitle { color: #f0f5fc; }
+QLabel#platformLabel, QLabel#queueStatus { color: #e0e9f4; }
+QCheckBox#startupCheckBox:focus { color: #aacfff; }
+QLabel#cardTitle, QLabel#logTitle, QLabel#emptyTitle { color: #edf3ff; }
+QLabel#muted, QLabel#emptyHint, QLabel#fileCount { color: #e0e9f4; }
+QPushButton#projectLink { color: #aacfff; }
+QPushButton#projectLink:hover { color: #d5e8ff; }
+QLineEdit, QComboBox, QPlainTextEdit#logView, QTextBrowser#updateNotes {
+    color: #eff4fb; background: rgba(18,25,35,152); border-color: #4e6076;
+    selection-color: #ffffff; selection-background-color: #385c82;
+}
+QLineEdit:focus, QComboBox:focus { background: #253242; border-color: #8ab2e3; }
+QComboBox#resolutionInput::drop-down { width: 44px; }
+QComboBox QLineEdit#inputDropdownEditor, QComboBox QLineEdit#inputDropdownEditor:focus {
+    background: transparent; color: #eff4fb; border: none; padding: 0; selection-background-color: #385c82;
+}
+QLineEdit#outputPath { color: #d3dce7; }
+QComboBox QAbstractItemView, QListView#searchResults { background: #273444; color: #eef4ff; border-color: #4d5d71; selection-background-color: #37587b; selection-color: #ffffff; }
+QComboBox QListView::item:hover, QListView#searchResults::item:hover { background: #34465b; color: #f1f6ff; }
+QComboBox QListView::item:selected, QListView#searchResults::item:selected { background: #37587b; color: #ffffff; }
+QFrame#fileEmpty { background: rgba(22,30,41,36); border-color: #586b81; }
+QPlainTextEdit#logView { background: transparent; border: none; }
+QTreeView#fileList { color: #e6edf8; }
+QTreeView#fileList::item { border-bottom-color: #3b4858; }
+QTreeView#fileList::item:selected { color: #f4f8ff; background: #35516e; }
+QPushButton#secondary, QPushButton#importAction, QPushButton#importIconAction, QPushButton#logAction,
+QPushButton#taskCancel, QDialogButtonBox QPushButton { color: #d9e6f6; }
+QPushButton#secondary:pressed, QPushButton#importAction:pressed, QPushButton#importIconAction:pressed,
+QPushButton#logAction:pressed, QPushButton#taskCancel:pressed { background: #415873; }
+QPushButton#primary:disabled, QPushButton#secondary:disabled, QPushButton#importIconAction:disabled, QPushButton#logAction:disabled { background: transparent; color: #94a0ae; }
+QFrame#dragPrompt { background: #253345; border-color: #546a83; }
+QLabel#dropReady { color: #cbe3ff; }
+QFrame#dropToast { background: #223d32; border-color: #4e7562; }
+QLabel#dropToastText { color: #ceefda; }
+QDialog, QMessageBox { background: #212b39; color: #e4edf9; }
+QLabel#brand, QPushButton#navCategory, QPushButton#navPage { color: #f0f5fc; }
+QLabel#brandVersion { color: #a8b4c2; font-size: 10px; font-weight: 400; }
+QLabel#brandVersion[updateAvailable="true"] { color: #a6c9ef; font-weight: 600; }
+QPushButton#navPage:checked, QPushButton#navCategory:checked {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(35,48,63,220), stop:0.28 rgba(45,61,78,218), stop:1 rgba(48,64,81,215));
+    color: #f0f5fc;
+    border-color: rgba(15,24,34,90) rgba(52,68,86,60) rgba(151,172,194,35) rgba(19,30,42,70);
+}
+QPushButton#navPage:!checked:enabled:hover,
+QPushButton#navCategory:!checked:enabled:hover {
+    background: rgba(143,165,188,12);
+    border-color: rgba(195,212,230,33) rgba(141,164,187,14) rgba(8,16,24,48) rgba(175,197,218,22);
+}
+QPushButton#primary:enabled, QPushButton#secondary[contentAction="true"]:enabled,
+QPushButton#importIconAction[contentAction="true"]:enabled {
+    background: rgba(56, 69, 86, 223); color: #e0e8f2;
+}
+QPushButton#logAction:enabled { background: transparent; color: #e0e8f2; }
+QPushButton#logAction:enabled:pressed { background: #415873; }
+QPushButton#secondary[contentAction="true"]:enabled:pressed, QPushButton#importIconAction[contentAction="true"]:enabled:pressed { background: #344253; }
+QPushButton#primary:enabled:pressed { background: #344253; }
+
+QPushButton#logAction[modelLogToggle="true"],
+QPushButton#logAction[modelLogToggle="true"]:enabled:hover,
+QPushButton#logAction[modelLogToggle="true"]:enabled:focus,
+QPushButton#logAction[modelLogToggle="true"]:enabled:pressed,
+QPushButton#logAction[modelLogToggle="true"]:checked { background: transparent; border: none; }

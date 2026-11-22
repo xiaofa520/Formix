@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "formix"
+version = "1.2.9"
+description = "跨平台桌面文件转换工具"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["mutagen>=1.47", "pycryptodome>=3.21"]
+
+[project.scripts]
+formix = "formix.launcher:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+formix = ["*.qss", "*.txt", "assets/*.png", "assets/*.ico", "assets/*.docx", "assets/*.json", "assets/icons/*.svg"]

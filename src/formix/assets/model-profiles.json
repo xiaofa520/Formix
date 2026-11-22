@@ -1,0 +1,43 @@
+{
+  "pp-ocrv5-mobile": {
+    "repo": "nakamura196/ppocrv5-mobile-web-onnx",
+    "label": "PP-OCRv5 Mobile",
+    "min_available_ram_gib": 1,
+    "min_cuda_vram_gib": 0
+  },
+  "smoldocling": {
+    "repo": "docling-project/SmolDocling-256M-preview",
+    "min_available_ram_gib": 3,
+    "min_cuda_vram_gib": 2
+  },
+  "smolvlm-500m": {
+    "repo": "HuggingFaceTB/SmolVLM-500M-Instruct",
+    "min_available_ram_gib": 3,
+    "min_cuda_vram_gib": 2
+  },
+  "granite-docling-258m": {
+    "repo": "ibm-granite/granite-docling-258M",
+    "min_available_ram_gib": 3,
+    "min_cuda_vram_gib": 2
+  },
+  "paddleocr-vl-1.6": {
+    "repo": "PaddlePaddle/PaddleOCR-VL-1.6",
+    "min_available_ram_gib": 6,
+    "min_cuda_vram_gib": 4
+  },
+  "glm-ocr": {
+    "repo": "zai-org/GLM-OCR",
+    "min_available_ram_gib": 6,
+    "min_cuda_vram_gib": 4
+  },
+  "deepseek-ocr": {
+    "repo": "deepseek-ai/DeepSeek-OCR",
+    "min_available_ram_gib": 4,
+    "min_cuda_vram_gib": 6
+  },
+  "dots-ocr": {
+    "repo": "dots-studio/dots.ocr",
+    "min_available_ram_gib": 16,
+    "min_cuda_vram_gib": 8
+  }
+}

@@ -1,0 +1,9 @@
+torch>=2.5
+torchvision
+transformers>=5.3,<6
+huggingface-hub>=1.3,<2
+num2words
+Pillow
+sentencepiece>=0.2
+docling-core>=2,<3
+einops

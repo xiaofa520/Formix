@@ -1,472 +1,161 @@
-# Formix 使用文档
+# 格式转换通 · Formix
+
+[简体中文](README.md) · [English](README_EN.md)
+
+**把常用的音视频、图片和文档处理，放进一个简单清爽的桌面工具。**
+
+格式转换通（Formix）是一款面向 Windows、macOS 和 Linux 的开源文件转换工具。拖入文件即可开始，按文件类型进入对应功能页；格式选择、压缩参数、任务进度和运行日志都集中在一个界面里。
+
+[![GitHub release](https://img.shields.io/github/v/release/xiaofa520/Formix?display_name=tag)](https://github.com/xiaofa520/Formix/releases)
+[![GitHub stars](https://img.shields.io/github/stars/xiaofa520/Formix?style=flat)](https://github.com/xiaofa520/Formix/stargazers)
+[![GitHub license](https://img.shields.io/github/license/xiaofa520/Formix)](https://github.com/xiaofa520/Formix)
+[![GitHub issues](https://img.shields.io/github/issues/xiaofa520/Formix)](https://github.com/xiaofa520/Formix/issues)
 
-## 文档语言
+> 当前项目仍在持续开发中。不同平台、输入格式和引擎版本可能影响可用的转换选项；遇到问题欢迎提交 Issue，并附上系统版本、输入格式和日志。
 
-- 简体中文：`README.md`
-- English: [README_EN.md](README_EN.md)
-- 日本語: [README_JA.md](README_JA.md)
+## 软件预览
 
-## 相关文档
+中文界面实拍 · 点击缩略图查看完整截图。
 
-- 命令行使用文档：[COMMAND_USAGE.md](COMMAND_USAGE.md)
+<table>
+  <tr>
+    <th align="center">图片提取文字</th>
+    <th align="center">PDF 转换</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/images/image-ocr-zh_CN.png"><img src="docs/images/image-ocr-zh_CN.png" alt="图片提取文字" width="360" /></a></td>
+    <td align="center"><a href="docs/images/pdf-zh_CN.png"><img src="docs/images/pdf-zh_CN.png" alt="PDF 转换" width="360" /></a></td>
+  </tr>
+  <tr>
+    <th align="center">视频转换</th>
+    <th align="center">设置</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/images/video-zh_CN.png"><img src="docs/images/video-zh_CN.png" alt="视频转换" width="360" /></a></td>
+    <td align="center"><a href="docs/images/settings-zh_CN.png"><img src="docs/images/settings-zh_CN.png" alt="设置" width="360" /></a></td>
+  </tr>
+</table>
 
-## 一、软件简介
+## 为什么选择 Formix
 
-Formix 是一个基于 FFmpeg 的桌面多媒体处理工具，当前包含以下主要功能：
+- **一处处理多种文件**：音频、视频、图片、文档和 PDF 功能分开，操作路径清楚。
+- **拖放即用**：将文件拖进窗口，会根据格式切换到相应页面并加入列表。
+- **批量排队处理**：任务逐个执行，界面仍可操作；可查看进度、暂停任务并查看每个功能页自己的日志。
+- **参数够用，不堆复杂选项**：常见目标格式优先，也保留一些较少见的格式；压缩可按需要调整分辨率或音频参数。
+- **尽量利用可用硬件**：兼容的格式可使用显卡编码；不适用时使用 CPU，也可在设置里选择处理方式。
+- **保留文件信息**：转换与压缩时尽量保留音频标签、视频流信息和图片元数据；具体保留情况取决于输入格式和目标格式。
+- **可选 PDF 视觉模型**：模型由用户在设置中按需下载，不随源码或安装包默认附带。
+- **按喜好调整界面**：支持明暗主题、系统语言自动识别、背景图与字体设置，并提供简体中文、繁體中文、English、日本語、한국어、Русский和Français。
+- **跨平台界面**：Windows、macOS、Linux 使用同一套 Qt 桌面界面，平台安装包只包含相应系统的依赖。
 
-1. 视频格式转换
-2. 音频格式转换
-3. 图片格式转换
-4. M3U8 下载与转封装
-5. 音视频分离
-6. 音视频合成
-7. 命令行页面（内置 FFmpeg / FFplay / FFprobe）
-8. GPU 编码、背景设置、每日壁纸、在线更新
+文件转换在本机处理。应用会连接 GitHub 检查软件和引擎更新；下载 PDF 模型时会连接对应模型仓库。网络 M3U8 功能则需要访问播放列表引用的资源。
 
-## 二、运行前准备
+## 功能一览
 
-### 1. 安装 Python 依赖
+| 分类 | 功能 | 说明 |
+| --- | --- | --- |
+| 视频 | 视频转换 | 转换常用及部分专业视频格式；可按需设置输出分辨率。 |
+| 视频 | 视频压缩 | 选择压缩方案，并设置分辨率上限。兼容时可使用显卡编码。 |
+| 视频 | M3U8 合成 | 合成本地或网络 M3U8 点播列表，输出为常见视频文件。 |
+| 音频 | 音频转换 | 转换音频格式；支持导入网易云 NCM 文件，解密后继续转换。 |
+| 音频 | 音频压缩 | 调整压缩方案及可用的音频参数。 |
+| 音视频 | 音视频合并 | 将视频与单独的音轨合成为一个文件。 |
+| 音视频 | 音视频分离 | 从视频中提取音频或视频流。 |
+| 图片 | 图片转换 | 转换常见图片格式；ICO 可生成 32、64、128 像素图标。支持导入 Adobe Illustrator 的 `.ai` 文件进行图片输出。 |
+| 图片 | 图片压缩 | 按图片格式选择相应的压缩方式，并尽量保留可写入的元数据。 |
+| 文档 | 文档转换 | 转换常见办公文档格式；可用格式取决于文档类型和本机文档引擎。 |
+| 文档 | 图片提取文字 | 本地轻量 OCR；批量识别图片，编辑并复制结果，或导出 TXT / Markdown。 |
+| 文档 | PDF 转换 | 提取 PDF 文字并导出为可用格式；扫描件可在设置中按需下载视觉识别模型。 |
 
-如果你当前就在项目根目录，执行：
+## 新增与改进
 
-```bash
-pip install -r requirements.txt
-```
+- **图片提取文字**：在“文档”分类中批量导入 PNG、JPEG、BMP、WebP 或 TIFF。使用 PP-OCRv5 Mobile 轻量模型，支持多页 TIFF；识别结果位于日志上方，可编辑后复制。
+- **三种结果方式**：默认仅显示文字、不生成文档文件；也可选择导出 TXT 或 Markdown。识别在独立进程运行。
+- **PDF 版式还原**：有文字层的 PDF 优先保留原始文字、字体、加粗、图片和表格，改善续行分段与内容裁剪；扫描件使用所选模型识别。还原效果取决于源文件和模型。
+- **记住模型选择**：重启后恢复上次选择的 PDF 模型。不同模型使用各自的适配与运行依赖。
+- **文档属性更干净**：PDF 转 Office 文件保留源文件已有作者，不额外添加作者；清空生成工具备注，创建与最后保存时间使用本次转换时间。
+- **缓存与日志**：转换中间文件、依赖下载临时文件集中放在缓存目录；完成后发布到指定输出位置。运行日志记录任务和错误，便于排查问题。
 
-### 2. 准备 FFmpeg
+## 使用教程
 
-本项目默认优先使用软件目录内的 FFmpeg，不依赖系统环境变量。
+### 1. 下载并启动
 
-默认目录：
+打开 [GitHub Releases](https://github.com/xiaofa520/Formix/releases)，下载与系统匹配的安装包：
 
-- `format_factory/FFmpeg/bin/ffmpeg.exe`
-- `format_factory/FFmpeg/bin/ffprobe.exe`
-- `format_factory/FFmpeg/bin/ffplay.exe`
+- **Windows**：下载 `.exe` 安装程序，按提示安装后启动“格式转换通”。
+- **macOS**：下载对应架构的 `.pkg` 安装包并完成安装。
+- **Linux**：下载对应平台的压缩包，按随包说明启动。
 
-说明：
+请从 GitHub Releases 下载正式版本。不同系统的安装包只包含对应平台的运行依赖。
 
-- `ffmpeg` 是核心必须文件，没有它时转换功能不可用。
-- `ffprobe` 用于文件信息识别、格式分析和部分页面的自动判断。
-- `ffplay` 用于命令行页面直接播放媒体文件。
-- 可以在软件“设置”页直接点击下载或更新 FFmpeg，程序会先下载到 `format_factory/ffmpeg_cache`，再自动解压到 `format_factory/FFmpeg`。
+### 2. 添加文件
 
-### 3. 启动方式
+1. 从左侧选择音频、视频、图片或文档分类。
+2. 点击文件列表右上角的“添加文件”，也可以把文件直接拖到应用窗口。
+3. 拖入的文件会按格式自动进入对应功能页；文件名和大小会显示在列表中。
+4. 可一次添加多个文件，任务会依次排队处理。
 
-建议在项目根目录执行：
+### 3. 设置输出
 
-```bash
-python -m format_factory.main
-```
+1. 在左侧选择具体功能，例如“视频转换”或“图片压缩”。
+2. 在“输出设置”中选择目标格式或压缩方案。
+3. 如需调整画面尺寸，在分辨率输入框输入 `1920x1080`、`1920*1080` 或 `1920 1080`。留空或选择“保持原分辨率”会沿用源文件尺寸。
+4. 查看保存位置；需要改位置时点击“选择文件夹”。
 
-## 三、主界面说明
+不同输入格式会显示适用的目标格式和压缩参数。某些格式没有意义或不兼容的选项不会提供。
 
-当前主界面包含以下分页：
+### 4. 开始、暂停和查看进度
 
-1. 视频
-2. 音频
-3. 图片
-4. M3U8
-5. 音视频
-6. 命令行
-7. 设置
+点击“开始处理”启动队列。文件列表会显示当前状态和进度，页面下方的日志显示转换过程及结果。暂停后可继续处理；取消或失败的任务不会被当作成功文件保留。不同功能页的日志互相独立，可在相应页面导出日志。
 
-说明：
+### 5. 设置与可选模型
 
-- “命令行”分页默认可在设置中关闭，关闭后菜单不显示。
-- 大多数转换页的操作流程一致：添加文件、选择格式、选择输出目录、调整预设、开始转换。
+在“设置”中可以切换界面语言和明暗主题、设置背景与字体、检查软件或转换引擎更新，并选择显卡处理方式。PDF 视觉模型不会自动下载；需要扫描件识别时，再到设置中选择模型并按提示下载。下载前可查看模型所需空间和当前可用内存。
 
-通用特性：
+### 6. 从图片提取文字
 
-- 支持拖拽文件到列表
-- 支持批量处理
-- 支持取消当前任务及后续排队任务
-- 支持日志复制与清空
-- 输出格式、预设、分辨率、语言、背景填充模式不支持鼠标滚轮误切换
+1. 打开“文档 → 图片提取文字”，添加一张或多张图片。
+2. 首次使用时，在设置中下载 **PP-OCRv5 Mobile** 轻量模型。
+3. 选择输出方式：
+   - **仅显示 / 复制**：不生成文档文件；识别结果显示在日志上方，可编辑后点击“复制识别文字”。批量识别时显示最近完成的图片结果。
+   - **TXT / Markdown**：选择保存位置，逐张导出文字文件；识别结果区自动隐藏。
+4. 点击“开始处理”。需要同时保留多张图片的文字时，选择文件导出模式。
 
-## 四、视频转换
+清晰、端正的印刷文字更容易识别；低分辨率、手写或复杂排版图片请核对结果。
 
-### 支持的输出格式
+## 更新与问题反馈
 
-- `mp4`
-- `m4a`
-- `mkv`
-- `avi`
-- `mov`
-- `webm`
-- `flv`
-- `gif`
-- `m3u8`
+应用会在打开设置时尝试从 GitHub 加载更新公告；离线时显示上次缓存的公告。软件更新与 FFmpeg、libvips、LibreOffice 引擎更新分别管理。引擎更新完成校验和试运行后才会切换版本，更新失败会继续使用旧版本。
 
-### 功能说明
+- [查看最新版本](https://github.com/xiaofa520/Formix/releases)
+- [报告问题或提出建议](https://github.com/xiaofa520/Formix/issues)
+- [项目主页](https://formix.xiaofa520.cn/)
 
-- 常见视频格式互转
-- 可选分辨率缩放
-- 可选预设与自定义参数
-- 支持输出为 HLS 播放列表
-- 支持 GPU 编码自动注入和不支持时自动回退
+提交问题时，请尽量提供操作系统及版本、输入文件类型、目标格式、出错页面的日志，以及是否开启了 GPU 或使用了模型。请不要上传含有私人内容的文件；可以先用虚构或公开样例复现。
 
-### 使用步骤
+## 从源码运行
 
-1. 添加视频文件或文件夹
-2. 选择输出格式
-3. 按需选择分辨率
-4. 选择预设或自定义参数
-5. 选择输出目录
-6. 点击“开始转换”
+Windows 安装完成后，从开始菜单打开「格式转换通」即可。应用自带 Python。开发者在源码工作区准备好内置环境后，可运行 `.\build\app\python\python.exe -I .\main.py` 调试。
 
-### 说明
-
-- `gif` 更适合短片段导出。
-- 输出 `m3u8` 时，会自动创建 `原文件名_segments` 子目录保存播放列表和切片。
-- 如果使用“自定义”参数，请确保你了解 FFmpeg 参数含义。
-
-## 五、音频转换
-
-### 支持的输出格式
-
-- `mp3`
-- `m4a`
-- `aac`
-- `wav`
-- `flac`
-- `ogg`
-- `opus`
-
-### 功能说明
-
-- 常见音频格式互转
-- 支持从带封面的媒体中提取音频
-- 支持 `.ncm` 文件解密后继续转换
-- 针对 `m4a`、`aac`、`wav` 做了容器与编码兼容性修正
-
-### 使用步骤
-
-1. 添加音频文件
-2. 选择目标格式
-3. 选择预设或自定义参数
-4. 选择输出目录
-5. 点击“开始转换”
-
-### `.ncm` 说明
-
-- 软件会先解密 `.ncm`，再按目标格式继续处理。
-- 解密缓存会放在 `ncm_cache` 目录。
-- 任务结束后程序会自动尝试清理缓存文件。
-
-## 六、图片转换
-
-### 支持的输出格式
-
-- `jpg`
-- `png`
-- `webp`
-- `bmp`
-- `tiff`
-- `ico`
-
-### 功能说明
-
-- 常见图片格式互转
-- 提供质量、压缩和缩放预设
-- 支持导出图标文件
-
-### 使用步骤
-
-1. 添加图片文件
-2. 选择目标格式
-3. 选择预设
-4. 选择输出目录
-5. 点击“开始转换”
-
-## 七、M3U8 下载与转封装
-
-### 支持输入
-
-- 在线 `http://` / `https://` M3U8 地址
-- 本地 `.m3u8` 文件
-
-### 支持输出格式
-
-- `mp4`
-- `mkv`
-- `avi`
-- `mov`
-- `webm`
-
-### 功能说明
-
-- 下载在线 M3U8 资源
-- 支持本地 M3U8 重新封装或转换
-- 可直接输出为常见视频容器
-
-### 使用步骤
-
-1. 输入在线地址或加载本地 `.m3u8`
-2. 选择输出格式
-3. 选择输出目录
-4. 点击开始
-
-## 八、音视频页
-
-音视频页包含两个子页：
-
-1. 分离音视频
-2. 合成音视频
-
-### 1. 分离音视频
-
-功能：
-
-- 提取纯音频
-- 提取纯视频
-- 同时提取音频和视频
-
-输出命名：
-
-- 音频：`原文件名_audio.扩展名`
-- 视频：`原文件名_video.扩展名`
-
-### 2. 合成音视频
-
-功能：
-
-- 将一个音频文件批量合成到多个视频文件中
-
-输出命名：
-
-- `原视频名_merged.扩展名`
-
-音频处理方式示例：
-
-- 复制音频流
-- 转为 M4A(AAC)
-- 转为 AAC 192k
-- 转为 MP3 192k
-- 转为 FLAC
-- 转为 Opus 96k
-
-## 九、命令行页面
-
-### 支持命令
-
-- `ffmpeg`
-- `ffplay`
-- `ffprobe`
-
-### 功能说明
-
-- 可直接在软件内执行命令
-- 支持带空格路径和带引号路径
-- 支持命令历史记录
-- 支持 `Ctrl + C` 中断运行
-- 支持鼠标拖拽选择日志与报错文本
-- 执行 `ffmpeg` 时底部显示进度条
-
-### 使用方式
-
-1. 打开“命令行”分页
-2. 直接输入命令
-3. 按回车执行
-4. 用 `Ctrl + Enter` 换行
-5. 用键盘上方向键回填历史命令
-
-### 示例
-
-```bash
-ffmpeg -i "input.mp4" -c:v libx264 "output.mp4"
-ffprobe "input.mp4"
-ffplay "input.mp4"
-```
-
-说明：
-
-- 命令行页面只允许执行 `ffmpeg`、`ffplay`、`ffprobe`，不会执行其他系统命令。
-- 如果本地缺少 `ffprobe` 或 `ffplay`，页面会直接提示缺失。
-
-## 十、设置页
-
-设置页主要包括以下内容：
-
-1. 外观
-2. GPU 设置
-3. 关于
-4. 软件更新
-5. FFmpeg 下载与更新
-
-### 1. 外观
-
-支持设置：
-
-- 亮色 / 深色 / 自动跟随系统
-- 语言切换
-- 命令行页面启用与禁用
-- 背景图片
-- 背景图片透明度
-- 毛玻璃模糊
-- 背景填充模式
-- 每日壁纸
-
-背景填充模式包括：
-
-- 无拉伸
-- 拉伸填充
-- 等比适应
-- 等比填充（裁剪）
-
-### 2. 语言切换
-
-支持语言：
-
-- 简体中文
-- 繁體中文
-- English
-- 日本語
-- 한국어
-- 自动跟随系统
-
-切换语言后会弹出提示框，并提供两个选项：
-
-- `立即退出`
-- `稍后自行退出`
-
-选择“立即退出”后软件会自动关闭。
-
-### 3. 每日壁纸
-
-功能：
-
-- 自动从在线接口获取壁纸
-- 本地缓存当天壁纸
-- 可手动刷新
-
-说明：
-
-- 手动清空背景图时，会同时关闭每日壁纸。
-- 如果手动更换背景图，每日壁纸功能也会停止生效。
-
-### 4. GPU 设置
-
-支持：
-
-- NVIDIA NVENC
-- AMD AMF
-- Intel Quick Sync
-- 不使用 GPU
-
-说明：
-
-- 主要用于视频编码加速。
-- 只有当前 FFmpeg 编译包含对应编码器时才会生效。
-- 遇到不支持 GPU 的预设，程序会自动回退到 CPU。
-
-### 5. 软件更新
-
-功能：
-
-- 手动检查新版本
-- 查看更新公告
-- 下载并准备安装更新
-
-更新接口当前使用 GitHub Release Latest。
-
-### 6. FFmpeg 下载与更新
-
-功能：
-
-- 下载或更新 FFmpeg
-- 自动显示下载与解压进度
-- 自动解压到 `format_factory/FFmpeg`
-- 完成后删除压缩包
-
-说明：
-
-- Windows、Linux、macOS 会根据系统平台选择对应下载资源。
-- 安装时会一并处理 `ffmpeg`、`ffprobe`、`ffplay`。
-
-## 十一、日志说明
-
-各处理页底部通常会显示日志区域，用于输出：
-
-1. 已添加文件
-2. 当前任务状态
-3. FFmpeg 命令
-4. 编码器信息
-5. 实时进度
-6. 警告与错误
-7. 成功或失败结果
-
-常见日志类型：
-
-- `info`
-- `meta`
-- `cmd`
-- `encoder`
-- `warning`
-- `error`
-- `success`
-
-## 十二、常见问题
-
-### 1. 软件启动后提示未找到 FFmpeg
-
-请检查以下目录中是否存在对应文件：
-
-- `format_factory/FFmpeg/bin/ffmpeg.exe`
-- `format_factory/FFmpeg/bin/ffprobe.exe`
-- `format_factory/FFmpeg/bin/ffplay.exe`
-
-如果缺失，可到设置页下载。
-
-### 2. 看不到媒体信息或格式识别结果
-
-通常是 `ffprobe` 缺失导致。
-
-### 3. 命令行页面无法执行 `ffplay`
-
-通常是本地没有安装 `ffplay`，请重新通过设置页下载或更新 FFmpeg 套件。
-
-### 4. GPU 已选择但没有加速
-
-可能原因：
-
-- 当前预设不支持 GPU
-- FFmpeg 未编译对应 GPU 编码器
-- 当前输出格式或编码方式不适合 GPU
-
-### 5. 转换失败如何排查
-
-建议按顺序检查：
-
-1. 查看日志末尾错误信息
-2. 检查输入文件是否损坏
-3. 更换目标格式重试
-4. 关闭 GPU 后重试
-5. 清空自定义参数后重试
-
-## 十三、依赖说明
-
-当前项目主要依赖：
-
-- `PyQt6`
-- `mutagen`
-- `pycryptodome`
-
-## 十四、文档说明
-
-- 本文档用于说明当前版本的主要使用方式。
-
-## 十五、许可证
-
-- 本项目当前采用 [GPL-3.0](LICENSE) 许可证。
-- 许可证全文请查看项目根目录下的 [LICENSE](LICENSE) 文件。
-- 由于项目功能依赖 FFmpeg，实际分发时也请一并遵守 FFmpeg 及其相关第三方组件的许可证要求。
+部分转换功能需要对应引擎。Windows 正式安装包会携带所需运行环境；源码运行时若缺少引擎，应用会提示处理方式。模型权重仍由用户在设置页按需下载。
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=xiaofa520%2FFormix&type=date&legend=bottom-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xiaofa520/Formix&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xiaofa520/Formix&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=xiaofa520/Formix&type=date&legend=bottom-right" />
- </picture>
+如果 Formix 对你有帮助，欢迎给项目点个 Star，帮助更多用户发现它。
+
+<a href="https://www.star-history.com/?repos=xiaofa520%2FFormix&amp;type=date&amp;legend=bottom-right">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=xiaofa520/Formix&amp;type=date&amp;theme=dark&amp;legend=bottom-right" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=xiaofa520/Formix&amp;type=date&amp;legend=bottom-right" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=xiaofa520/Formix&amp;type=date&amp;legend=bottom-right" />
+  </picture>
 </a>
+
+
+## 官方反馈群
+
+使用中遇到问题，或有功能建议，欢迎加入 QQ 群交流。
+
+[点击链接加入群聊【Formix（格式转换通）反馈问题官方群】](https://qm.qq.com/q/SluGNXFwku)
+
+反馈时请附上软件版本、操作系统、复现步骤及相关错误日志，方便定位问题。
