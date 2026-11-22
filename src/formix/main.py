@@ -2690,7 +2690,9 @@ class Window(QMainWindow):
     def refresh_contrast(self):
         canvas = self.canvas
         active = not canvas.image.isNull() and canvas.image_opacity > 0
-        white_text = active and canvas.mask_opacity == 0
+        # Wallpaper text uses one consistent color; per-widget luminance sampling
+        # otherwise overrides the theme with black as the layout or mask changes.
+        white_text = active
         sheet = "QWidget { color: #ffffff; }" if white_text else ""
         if self.styleSheet() != sheet:
             self.setStyleSheet(sheet)
@@ -2702,27 +2704,11 @@ class Window(QMainWindow):
             glyph = widget.property("glyph")
             adaptive_text = name in {"queueStatus", "platformLabel", "navCategory", "navPage",
                                      "fileCount", "muted", "emptyHint"}
-            if (not adaptive_text and not glyph) or not widget.isVisibleTo(self):
+            if not adaptive_text and not glyph:
                 continue
-            surface = widget.parentWidget()
-            while surface is not None and not isinstance(surface, GlassFrame):
-                surface = surface.parentWidget()
             ink = "#f0f5fc" if canvas.dark else "#293748"
             if white_text:
                 ink = "#ffffff"
-            elif active:
-                tint = surface.surface_tint(canvas.dark) if surface is not None else None
-                origin = widget.mapTo(canvas, widget.rect().topLeft())
-                width, height = max(1, canvas.width()), max(1, canvas.height())
-                padding_x = max(2, widget.width() * .12) / width
-                padding_y = max(2, widget.height() * .12) / height
-                region = (
-                    max(0, (origin.x() - padding_x * width) / width),
-                    max(0, (origin.y() - padding_y * height) / height),
-                    min(1, (origin.x() + widget.width() + padding_x * width) / width),
-                    min(1, (origin.y() + widget.height() + padding_y * height) / height),
-                )
-                ink = canvas.text_ink(region, glass if surface is not None else plain, tint)
             if adaptive_text:
                 selector = f"#{name}:!checked" if name in {"navPage", "navCategory"} else f"#{name}"
                 sheet = f"{selector} {{ color: {ink}; }}" if active else ""
