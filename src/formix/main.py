@@ -2690,7 +2690,11 @@ class Window(QMainWindow):
         canvas = self.canvas
         # Theme owns foreground colors; wallpaper brightness must not override it.
         ink = "#ffffff" if canvas.dark else "#000000"
-        sheet = f"QWidget {{ color: {ink}; }}"
+        link_ink = "#8dc5ff" if canvas.dark else "#175fa8"
+        hover_ink = "#c4e2ff" if canvas.dark else "#104578"
+        sheet = (f"QWidget {{ color: {ink}; }}"
+                 f"QPushButton#projectLink {{ color: {link_ink}; }}"
+                 f"QPushButton#projectLink:hover {{ color: {hover_ink}; }}")
         if self.styleSheet() != sheet:
             self.setStyleSheet(sheet)
         widgets = [*self.findChildren(QPushButton), *self.findChildren(QLabel)]
@@ -2698,7 +2702,7 @@ class Window(QMainWindow):
             name = widget.objectName()
             glyph = widget.property("glyph")
             if isinstance(widget, QLabel) and name == "hint" and 'href="settings"' in widget.text():
-                text = re.sub(r"color:\s*#[0-9a-fA-F]{6}", f"color: {ink}", widget.text())
+                text = re.sub(r"color:\s*#[0-9a-fA-F]{6}", f"color: {link_ink}", widget.text())
                 if text != widget.text():
                     widget.setText(text)
             adaptive_text = name in {"queueStatus", "platformLabel", "navCategory", "navPage",

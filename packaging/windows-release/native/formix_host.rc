@@ -1,0 +1,29 @@
+#pragma code_page(65001)
+#include <windows.h>
+#include "formix_version.h"
+1 ICON "logo.ico"
+1 VERSIONINFO
+ FILEVERSION FORMIX_VERSION_NUM
+ PRODUCTVERSION FORMIX_VERSION_NUM
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "080404B0"
+  BEGIN
+   VALUE "FileDescription", "格式转换通"
+   VALUE "CompanyName", "xiaofa520"
+   VALUE "LegalCopyright", "Copyright © 2026 xiaofa520. All rights reserved."
+   VALUE "ProductName", "格式转换通"
+   VALUE "InternalName", "Formix"
+   VALUE "OriginalFilename", "Formix.exe"
+   VALUE "FileVersion", FORMIX_VERSION_TEXT
+   VALUE "ProductVersion", FORMIX_VERSION_TEXT
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0804, 1200
+ END
+END

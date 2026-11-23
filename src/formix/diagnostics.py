@@ -6,6 +6,7 @@ from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 import os
 from pathlib import Path
 import queue
+import re
 import sys
 import tempfile
 import threading
@@ -17,6 +18,42 @@ logger.propagate = False
 _listener = None
 _handler = None
 log_path = None
+_cleanup_stop = None
+_cleanup_thread = None
+
+
+def clean_logs(folder, active_path=None, *, max_age_days=7, max_bytes=50*1024*1024):
+    """Bound inactive Formix logs only; live processes keep their complete session."""
+    import psutil
+    cutoff = time.time() - max_age_days * 86400
+    files = []
+    for path in Path(folder).glob('formix-*.log*'):
+        match = re.fullmatch(r'formix-\d{8}-\d{6}-(\d+)\.log(?:\.[1-3])?', path.name)
+        if not match or path.is_symlink():
+            continue
+        try:
+            stat = path.stat()
+            protected = (path == active_path or psutil.pid_exists(int(match[1])))
+            files.append((stat.st_mtime, path, stat.st_size, protected))
+        except OSError:
+            continue
+    total = sum(row[2] for row in files)
+    for modified, path, size, protected in sorted(files):
+        if not protected and (modified < cutoff or total > max_bytes):
+            try:
+                path.unlink()
+                total -= size
+            except OSError:
+                pass
+
+
+def _maintain_logs(folder, active_path, stop):
+    while not stop.is_set():
+        try:
+            clean_logs(folder, active_path)
+        except Exception:
+            pass  # Maintenance must never interrupt conversions or shutdown.
+        stop.wait(3600)
 
 
 def windows_appcontainer():
@@ -59,7 +96,7 @@ class BufferedHandler(QueueHandler):
 
 
 def setup(directory=None):
-    global _listener, _handler, log_path
+    global _listener, _handler, log_path, _cleanup_stop, _cleanup_thread
     if _listener is not None:
         return log_path
     if __package__:
@@ -76,14 +113,6 @@ def setup(directory=None):
             path = folder/f'formix-{time.strftime("%Y%m%d-%H%M%S")}-{os.getpid()}.log'
             handler = RotatingFileHandler(path, maxBytes=5*1024*1024, backupCount=3,
                                           encoding='utf-8')
-            # Retain at most 20 sessions; each has at most 4 files of 5 MiB.
-            sessions = sorted(folder.glob('formix-*.log'), key=lambda p: p.stat().st_mtime, reverse=True)
-            for old in sessions[20:]:
-                for item in [old, *folder.glob(old.name+'.*')]:
-                    try:
-                        item.unlink()
-                    except OSError:
-                        pass
             break
         except OSError as exc:
             failures.append(str(exc))
@@ -96,6 +125,10 @@ def setup(directory=None):
     _listener = QueueListener(_handler.queue, handler)
     _listener.start()
     log_path = path
+    _cleanup_stop = threading.Event()
+    _cleanup_thread = threading.Thread(target=_maintain_logs,
+        args=(folder, path, _cleanup_stop), name='formix-log-cleanup', daemon=True)
+    _cleanup_thread.start()
     event('application_start', python=sys.version, executable=sys.executable,
           log_file=str(path), fallback_errors=failures, windows_appcontainer=windows_appcontainer())
     return path
@@ -119,9 +152,13 @@ def install_exception_hooks():
 
 
 def shutdown():
-    global _listener, _handler
+    global _listener, _handler, _cleanup_stop, _cleanup_thread
     if _listener is None:
         return
+    if _cleanup_stop is not None:
+        _cleanup_stop.set()
+        _cleanup_thread.join(timeout=2)
+        _cleanup_stop = _cleanup_thread = None
     event('application_stop')
     logger.removeHandler(_handler)
     # Blocking here is intentional only at process exit, never during conversion.

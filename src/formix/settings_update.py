@@ -90,6 +90,8 @@ class UpdateDialog(QDialog):
         later.clicked.connect(self.reject)
         self.now = QPushButton(row.language.t("update_now"))
         self.now.setObjectName("primary")
+        # Keep the radius below half of the compact dialog button height.
+        self.now.setStyleSheet("QPushButton#primary { border-radius: 10px; }")
         self.now.clicked.connect(self.accept if row.component == "app" else row.start_download)
         for button in (later, self.now):
             button.setMinimumHeight(34)

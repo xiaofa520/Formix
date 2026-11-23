@@ -5,13 +5,14 @@
 [Setup]
 SourceDir={#ProjectDir}
 AppId=FormixDesktop
-AppName=格式转换通
+AppName={cm:AppTitle}
 AppVersion={#Version}
 AppPublisher=xiaofa520
 VersionInfoCompany=xiaofa520
 ShowLanguageDialog=yes
 LanguageDetectionMethod=uilanguage
-DefaultDirName={autopf}\Formix
+DefaultDirName={code:DefaultInstallDir}
+DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible arm64
 ArchitecturesInstallIn64BitMode=x64compatible arm64
@@ -28,13 +29,35 @@ Name: "ja"; MessagesFile: "compiler:Languages/Japanese.isl"
 Name: "ko"; MessagesFile: "compiler:Languages/Korean.isl"
 Name: "ru"; MessagesFile: "compiler:Languages/Russian.isl"
 Name: "fr"; MessagesFile: "compiler:Languages/French.isl"
+[CustomMessages]
+AppTitle=Formix
+StartMenuTask=Add a shortcut to the Start menu
+zh_CN.AppTitle=格式转换通
+zh_CN.StartMenuTask=添加到开始菜单
+zh_TW.AppTitle=格式轉換通
+zh_TW.StartMenuTask=新增至開始功能表
+[Tasks]
+Name: "startmenu"; Description: "{cm:StartMenuTask}"; Flags: unchecked
 [Files]
 Source: "build\windows-{#BuildArch}-app\*"; DestDir: "{app}"; Excludes: "logs\*,cache\*,output\*,models\*,formix\__pycache__\*,*.obj"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "build\vc_redist.{#BuildArch}.exe"; DestDir: "{tmp}"; DestName: "vc_redist.{#BuildArch}.exe"; Flags: deleteafterinstall
 [Icons]
-Name: "{commonprograms}\格式转换通"; Filename: "{app}\python\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\formix\assets\logo.ico"
+Name: "{commondesktop}\{cm:AppTitle}"; Filename: "{app}\python\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\formix\assets\logo.ico"
+Name: "{commonprograms}\{cm:AppTitle}"; Tasks: startmenu; Filename: "{app}\python\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\formix\assets\logo.ico"
 
 [Code]
+function DefaultInstallDir(Param: String): String;
+var
+  Drive, Folder: String;
+begin
+  if DirExists('D:\') then Drive := 'D:'
+  else Drive := ExpandConstant('{sd}');
+  if ActiveLanguage = 'zh_CN' then Folder := '格式转换通'
+  else if ActiveLanguage = 'zh_TW' then Folder := '格式轉換通'
+  else Folder := 'Formix';
+  Result := Drive + '\' + Folder;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;

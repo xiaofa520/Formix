@@ -1,0 +1,11 @@
+VSVersionInfo(
+ ffi=FixedFileInfo(filevers=(1,2,9,0), prodvers=(1,2,9,0), mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)),
+ kids=[StringFileInfo([StringTable('080404B0', [
+ StringStruct('CompanyName', 'xiaofa520'),
+ StringStruct('FileDescription', '格式转换通 / Formix'),
+ StringStruct('ProductName', '格式转换通 / Formix'),
+ StringStruct('FileVersion', '1.2.9'),
+ StringStruct('ProductVersion', '1.2.9'),
+ StringStruct('OriginalFilename', 'Formix.exe'),
+ StringStruct('LegalCopyright', 'Copyright © 2026 xiaofa520. All rights reserved.')
+ ])]), VarFileInfo([VarStruct('Translation', [2052, 1200])])])
