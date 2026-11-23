@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tomllib
 from pathlib import Path
+from wheel_manifest import package_artifact, materialize_wheel, write_offline_requirements
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
 
@@ -40,7 +41,7 @@ def checksum(path):
 
 
 def fetch(package):
-    spec = package.get("archive") or package["wheels"][0]
+    spec = package_artifact(package)
     local = spec.get("path")
     url = spec.get("url")
     if local:
@@ -55,7 +56,7 @@ def fetch(package):
     target = wheels / name
     expected = spec["hashes"]["sha256"]
     if target.exists() and checksum(target) == expected:
-        return
+        return materialize_wheel(package, target, wheels)
     partial = target.with_suffix(target.suffix + ".part")
     if source:
         shutil.copyfile(source, partial)
@@ -66,8 +67,10 @@ def fetch(package):
         raise ValueError(f"SHA-256 mismatch for {name}")
     partial.replace(target)
     print(name, flush=True)
+    return materialize_wheel(package, target, wheels)
 
 packages = tomllib.loads(lock.read_text())["packages"]
 with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-    list(pool.map(fetch, packages))
+    prepared = list(pool.map(fetch, packages))
+write_offline_requirements(prepared, folder)
 print(f"Prepared {len(packages)} packages for {slug}")

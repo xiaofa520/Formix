@@ -12,7 +12,7 @@ import time
 import urllib.request
 import tomllib
 from engine_versions import write_versions
-from wheel_manifest import write_offline_requirements
+from wheel_manifest import write_offline_requirements, package_artifact, materialize_wheel
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -90,13 +90,12 @@ def get_wheels():
                     for requirement in specs)
             for normalized, specs in requirements_by_name.items()
         )
-        if lock_satisfies_requirements:
-            fetch_packages(packages, lock)
-            return packages
+        if lock_satisfies_requirements and all(p["name"] != "opencv-python-headless" or p.get("wheels") for p in packages):
+            return fetch_packages(packages, lock)
     source = ROOT / "build" / f"resolve-{name}-requirements.txt"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(requirements, encoding="utf-8")
-    command = ["uv", "pip", "compile", str(source), "--output-file", str(lock), "--python", sys.executable, "--python-version", "3.11", "--python-platform", uv_tag, "--find-links", str(SHARED), "--quiet"]
+    command = ["uv", "pip", "compile", str(source), "--output-file", str(lock), "--python", sys.executable, "--python-version", "3.11", "--python-platform", uv_tag, "--find-links", str(SHARED), "--only-binary", "opencv-python-headless", "--quiet"]
     if platform.system() != "Darwin":
         command += ["--torch-backend", "cpu"]
     subprocess.run(command, cwd=ROOT, check=True)
@@ -112,23 +111,26 @@ def get_wheels():
                 lock_text = lock_text.replace("hashes = {}", f'hashes = {{ sha256 = "{digest}" }}', 1)
     lock.write_text(lock_text, encoding="utf-8")
     items = resolved["packages"]
-    fetch_packages(items, lock)
-    return items
+    return fetch_packages(items, lock)
 
 def fetch_packages(items, lock):
+    prepared = []
     for package in items:
-        spec = package.get("archive") or package["wheels"][0]
+        spec = package_artifact(package)
         if "path" in spec:
-            continue
-        url = spec["url"]
-        filename = Path(unquote(urlsplit(url).path)).name
-        destination = WHEELS / filename
-        if destination.exists() and sha256(destination) == spec['hashes']['sha256']:
-            continue
-        download(url, destination)
-        if sha256(destination) != spec['hashes']['sha256']:
-            destination.unlink(missing_ok=True)
-            raise ValueError(f"Wheel hash mismatch: {filename}")
+            destination = (lock.parent / spec["path"]).resolve()
+            if destination.parent != WHEELS.resolve():
+                target = WHEELS / destination.name
+                shutil.copyfile(destination, target)
+                destination = target
+        else:
+            url = spec["url"]
+            filename = Path(unquote(urlsplit(url).path)).name
+            destination = WHEELS / filename
+            if not destination.exists() or sha256(destination) != spec['hashes']['sha256']:
+                download(url, destination)
+        prepared.append(materialize_wheel(package, destination, WHEELS))
+    return prepared
 
 
 def get_python():
