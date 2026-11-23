@@ -95,6 +95,23 @@ class BufferedHandler(QueueHandler):
             self.dropped += 1
 
 
+class StartupLogHandler(RotatingFileHandler):
+    """Replace a full diagnostic log between complete records, without backups."""
+
+    def shouldRollover(self, record):
+        if self.stream is None:
+            self.stream = self._open()
+        self.stream.seek(0, os.SEEK_END)
+        return self.stream.tell() > self.maxBytes
+
+    def doRollover(self):
+        if self.stream is not None:
+            self.stream.close()
+            self.stream = None
+        Path(self.baseFilename).unlink(missing_ok=True)
+        self.stream = self._open()
+
+
 def setup(directory=None):
     global _listener, _handler, log_path, _cleanup_stop, _cleanup_thread
     if _listener is not None:
@@ -111,7 +128,7 @@ def setup(directory=None):
         try:
             folder.mkdir(parents=True, exist_ok=True)
             path = folder/f'formix-{time.strftime("%Y%m%d-%H%M%S")}-{os.getpid()}.log'
-            handler = RotatingFileHandler(path, maxBytes=5*1024*1024, backupCount=3,
+            handler = StartupLogHandler(path, maxBytes=5*1024*1024, backupCount=0,
                                           encoding='utf-8')
             break
         except OSError as exc:

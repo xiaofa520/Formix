@@ -1,17 +1,19 @@
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
-from PySide6.QtCore import QProcess, QUrl, QSize, Signal, Qt
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtCore import QProcess, QSize, Signal, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton,
                                QTextBrowser, QVBoxLayout, QWidget)
 if __package__:
-    from .runtime_paths import script_path
+    from .runtime_paths import ROOT, SYSTEM, script_path
     from .background_work import open_folder_async
     from .button_input import connect_action
     from .engine_update import bundled_versions, active_engine
 else:
-    from runtime_paths import script_path
+    from runtime_paths import ROOT, SYSTEM, script_path
     from background_work import open_folder_async
     from button_input import connect_action
     from engine_update import bundled_versions, active_engine
@@ -248,12 +250,8 @@ class UpdateRow(QWidget):
         data=json.loads(bytes(self.process.readAllStandardOutput()))
         if self.downloading:
             if self.component == "app":
-                self.set_note("engine_downloaded")
-                self.note.setToolTip(str(data))
                 path = Path(data)
-                if path.suffix.lower() not in {".exe", ".pkg"} or not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
-                    open_folder_async(path.parent, lambda folder: self.note.setText(
-                        self.language.t("folder_open_failed", path=str(folder))))
+                self.launch_app_update(path)
             else:
                 self.end_progress()
                 self.set_note("installed_version", version=data["version"])
@@ -283,6 +281,67 @@ class UpdateRow(QWidget):
                 self.available = update
                 self.availabilityChanged.emit(True)
             self.present_result()
+
+    def launch_app_update(self, archive):
+        """Hand a verified release to a detached, platform-specific installer."""
+        if not (ROOT / "release.txt").is_file():
+            self.set_note("app_update_packaged_only")
+            self.note.setToolTip(str(archive))
+            open_folder_async(archive.parent)
+            return False
+        helper = script_path("app_updater.py")
+        args = ["-I", helper, "--archive", str(archive), "--root", str(ROOT),
+                "--platform", SYSTEM.lower(), "--pid", str(os.getpid())]
+        if SYSTEM == "Windows":
+            runtime = ROOT / "runtime"
+            interpreter = runtime / "格式转换通.exe"
+            if not interpreter.is_file():
+                interpreter = runtime / "Formix.exe"
+            launcher = ROOT / "Formix.exe"
+            if not interpreter.is_file() or not launcher.is_file():
+                self.set_note("app_update_launch_failed")
+                return False
+            args.extend(["--interpreter", str(interpreter), "--launcher", str(launcher)])
+            program = str(interpreter)
+        else:
+            program = sys.executable
+            args.extend(["--interpreter", program])
+            if SYSTEM == "Darwin":
+                args.extend(["--bundle", "/Applications/Formix.app"])
+            else:
+                args.extend(["--launcher", str(ROOT / "Formix")])
+                if not os.access(ROOT, os.W_OK | os.X_OK):
+                    pkexec = shutil.which("pkexec")
+                    if not pkexec:
+                        self.set_note("app_update_linux_permissions")
+                        return False
+                    env_file = archive.with_name(".formix-update-session.json")
+                    session = {key: os.environ[key] for key in (
+                        "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+                        "XAUTHORITY", "LANG", "LC_ALL", "XDG_CURRENT_DESKTOP", "PATH") if key in os.environ}
+                    env_file.write_text(json.dumps({"uid": os.getuid(), "gid": os.getgid(),
+                                                    "home": str(Path.home()), "env": session}),
+                                        encoding="utf-8")
+                    env_file.chmod(0o600)
+                    args.extend(["--user-session", str(env_file), "--elevate"])
+        try:
+            started = QProcess.startDetached(program, args, str(ROOT))
+        except (OSError, RuntimeError, TypeError):
+            started = False
+        if isinstance(started, tuple):
+            started = started[0]
+        if not started:
+            if SYSTEM == "Linux" and "env_file" in locals():
+                try:
+                    env_file.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            self.set_note("app_update_launch_failed")
+            return False
+        self.set_note("app_update_installing")
+        self.note.setToolTip(str(archive))
+        self.window().close()
+        return True
 
     def present_result(self):
         if not self.available:

@@ -24,6 +24,11 @@ def main():
     if work.exists():
         raise SystemExit(f'Build directory already exists: {work}')
     shutil.copytree(template, work)
+    # Generate every Windows resource from the same artwork used by the GUI.
+    from PIL import Image
+    with Image.open(root / 'src/formix/assets/logo1.png') as image:
+        image.convert('RGBA').save(work / 'Formix.ico', sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
+    shutil.copy2(work / 'Formix.ico', work / 'native/logo.ico')
     version_file = work / 'version.txt'
     version_file.write_text(version_file.read_text(encoding='utf-8')
                             .replace('(1,2,9,0)', '(' + args.version.replace('.', ',') + ',0)')

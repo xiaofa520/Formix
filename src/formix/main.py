@@ -3274,6 +3274,34 @@ def main():
     app.setOrganizationName("Formix")
     app.setApplicationName("Formix")
     app.setApplicationVersion(app_version())
+    from PySide6.QtCore import QLockFile, QStandardPaths
+    from PySide6.QtNetwork import QLocalServer, QLocalSocket
+    import hashlib
+    identity = hashlib.sha256(str(Path.home()).encode()).hexdigest()[:20]
+    server_name = 'Formix.Desktop.' + identity
+    lock_dir = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation))
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    instance_lock = QLockFile(str(lock_dir / (server_name + '.lock')))
+    instance_lock.setStaleLockTime(0)
+    if not instance_lock.tryLock(0):
+        # The first process may still be constructing its window.
+        import time
+        for _ in range(50):
+            client = QLocalSocket()
+            client.connectToServer(server_name)
+            if client.waitForConnected(100):
+                client.write(b'activate')
+                client.waitForBytesWritten(1000)
+                client.disconnectFromServer()
+                return 0
+            time.sleep(0.1)
+        return 0
+    QLocalServer.removeServer(server_name)
+    server = QLocalServer(app)
+    server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
+    if not server.listen(server_name):
+        instance_lock.unlock()
+        return 1
     language = LanguageManager()
     icon = Path(__file__).with_name("assets") / "logo1.png"
     if icon.exists():
@@ -3281,7 +3309,23 @@ def main():
         app.setApplicationDisplayName(language.t("app_name"))
     apply_theme(app)
     window = Window(language)
+    def activate_existing():
+        while server.hasPendingConnections():
+            client = server.nextPendingConnection()
+            client.disconnectFromServer()
+            client.deleteLater()
+        if window.isMinimized():
+            window.showNormal()
+        else:
+            window.show()
+        window.raise_()
+        window.activateWindow()
+    server.newConnection.connect(activate_existing)
     window.show()
-    return app.exec()
+    try:
+        return app.exec()
+    finally:
+        server.close()
+        instance_lock.unlock()
 
 
