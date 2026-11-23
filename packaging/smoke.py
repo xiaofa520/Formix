@@ -16,13 +16,15 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QSettings
 from formix.localization import LanguageManager
 from formix.main import Window
-from formix.runtime_paths import executable
+from formix.runtime_paths import executable, script_path
 from PIL import Image
 import pyvips
 import pdfplumber
 
 os.environ["QT_QPA_PLATFORM"]="offscreen"
 qt=QApplication([])
+for entry in ('worker.py', 'runtime_check.py', 'engine_update.py'):
+    assert Path(script_path(entry)).is_file(), entry
 assert Path(executable("ffmpeg")).is_relative_to(app)
 assert Path(executable("soffice")).is_relative_to(app)
 with tempfile.TemporaryDirectory() as tmp:

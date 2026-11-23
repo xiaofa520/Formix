@@ -29,6 +29,17 @@ else:
 FEED = "https://api.github.com/repos/xiaofa520/Formix/releases/latest"
 
 
+def script_path(name):
+    """Resolve subprocess entry points in source and bytecode-only releases."""
+    source = MODULE_ROOT / name
+    if source.is_file():
+        return str(source)
+    compiled = source.with_suffix('.pyc')
+    if compiled.is_file():
+        return str(compiled)
+    raise FileNotFoundError(f'Missing application entry point: {name}')
+
+
 def app_version():
     release = ROOT / "release.txt"
     return release.read_text(encoding="ascii").strip() if release.is_file() else "1.2.9"

@@ -10,14 +10,15 @@ if [[ "$(uname)" == Darwin ]]; then
   cat > "$app/MacOS/Formix" <<'SCRIPT'
 #!/bin/sh
 root="$(dirname "$0")/../Resources"
-exec "$root/python/bin/python3.11" -I "$root/main.py"
+exec "$root/python/bin/python3.11" -I "$root/main.py" "$@"
 SCRIPT
   chmod +x "$app/MacOS/Formix"
   cat > "$app/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.formix.desktop</string><key>CFBundleName</key><string>格式转换通</string><key>CFBundleDisplayName</key><string>格式转换通</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>$version</string><key>CFBundleExecutable</key><string>Formix</string></dict></plist>
 PLIST
-  pkgbuild --root build/root --identifier org.formix.desktop --version "$version" --install-location / "dist/Formix-macos-$arch.pkg"
+  QT_QPA_PLATFORM=offscreen "$app/Resources/python/bin/python3.11" packaging/smoke.py "$app/Resources"
+  pkgbuild --root build/root --identifier org.formix.desktop --version "$version" --install-location / "dist/formix-mac-${arch/x64/64}-v$version.pkg"
 else
   app="build/linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x64/')-app"
   cat > "$app/Formix" <<'SCRIPT'
@@ -28,5 +29,5 @@ export SAL_USE_VCLPLUGIN=svp
 exec "$root/python/bin/python3.11" -I "$root/main.py" "$@"
 SCRIPT
   chmod +x "$app/Formix"
-  tar -C build -czf "dist/Formix-linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x64/').tar.gz" "$(basename "$app")"
+  tar -C build -czf "dist/formix-linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/64/')-v$version.tar.gz" "$(basename "$app")"
 fi

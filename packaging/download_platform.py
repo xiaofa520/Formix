@@ -153,15 +153,21 @@ def get_engines():
     system, machine = key
     if system == "Windows":
         arch = "arm64" if machine == "ARM64" else "x64"
-        if not list(DEST.glob("LibreOffice*.msi")):
-            subprocess.run(["winget", "download", "--id", "TheDocumentFoundation.LibreOffice", "--exact", "--architecture", arch, "--download-directory", str(DEST), "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"], check=True)
-        matching_runtime = [path for path in DEST.glob("*.exe") if re.search(arch, path.name, re.IGNORECASE)]
-        if not matching_runtime:
-            package_id = f"Microsoft.VCRedist.2015+.{arch}"
-            subprocess.run(["winget", "download", "--id", package_id, "--exact", "--architecture", arch, "--download-directory", str(DEST), "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"], check=True)
-        return
+        redist = DEST / f"vc_redist.{arch}.exe"
+        download(f"https://aka.ms/vs/17/release/vc_redist.{arch}.exe", redist)
+        # Validate the official signed executable before shipping it.
+        environment = os.environ.copy()
+        environment["FORMIX_REDIST"] = str(redist.resolve())
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        "$s=Get-AuthenticodeSignature -LiteralPath $env:FORMIX_REDIST; "
+                        "if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { exit 1 }"],
+                       check=True, env=environment)
     major_minor = "26.8.2"
-    if system == "Darwin":
+    if system == "Windows":
+        arch = "aarch64" if machine == "ARM64" else "x86_64"
+        file = f"LibreOffice_{major_minor}_Win_{arch.replace('_', '-')}.msi"
+        relative = f"win/{arch}/{file}"
+    elif system == "Darwin":
         arch = "aarch64" if machine == "arm64" else "x86_64"
         file = f"LibreOffice_{major_minor}_MacOS_{arch}.dmg"
         relative = f"mac/{arch}/{file}"

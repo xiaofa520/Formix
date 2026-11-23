@@ -1,14 +1,14 @@
 """Job planning. Each command writes exclusively inside its job's staging directory."""
 if __package__:
-    from .runtime_paths import executable
+    from .runtime_paths import executable, script_path
 else:
-    from runtime_paths import executable
+    from runtime_paths import executable, script_path
 import os
 import json
 import sys
 from pathlib import Path
 
-WORKER = str(Path(__file__).with_name("worker.py"))
+WORKER = script_path("worker.py")
 MODEL_PROFILES = json.loads((Path(__file__).with_name("assets") / "model-profiles.json").read_text(encoding="utf-8"))
 MODEL_REPOS = {key: profile["repo"] for key, profile in MODEL_PROFILES.items()}
 LEVELS = ("balanced", "quality", "small")

@@ -233,8 +233,9 @@ def latest(release=None, *, for_repair=False):
     if not for_repair and version <= Version(app_version()):
         return None
     names = {ASSET.casefold()}
-    if SLUG == "windows-x64":
-        names.add(f"formix-win-64-v{version}.exe")
+    system, arch = SLUG.rsplit('-', 1)
+    label, extension = {'windows': ('win', 'exe'), 'macos': ('mac', 'pkg'), 'linux': ('linux', 'tar.gz')}[system]
+    names.add(f"formix-{label}-{'64' if arch == 'x64' else arch}-v{version}.{extension}")
     for asset in release["assets"]:
         digest = asset.get("digest") or ""
         if asset["name"].casefold() in names and digest.startswith("sha256:"):

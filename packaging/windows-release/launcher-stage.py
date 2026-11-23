@@ -12,12 +12,24 @@ def configure_temporary_storage(root):
     """Keep application and inherited installer scratch files out of the project root."""
     import tempfile
     temporary = (root / 'cache' / 'python' / 'tmp').resolve()
-    temporary.mkdir(parents=True, exist_ok=True)
+    try:
+        temporary.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=temporary):
+            pass
+    except OSError:
+        if os.name == 'nt':
+            base = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData/Local')
+        elif platform.system() == 'Darwin':
+            base = Path.home() / 'Library/Caches'
+        else:
+            base = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache')
+        temporary = base / 'Formix/python/tmp'
+        temporary.mkdir(parents=True, exist_ok=True)
     for key in ('TEMP', 'TMP', 'TMPDIR'):
         os.environ[key] = str(temporary)
     tempfile.tempdir = str(temporary)
-    os.environ['PIP_CACHE_DIR'] = str((root / 'cache' / 'python' / 'pip').resolve())
-    os.environ['UV_CACHE_DIR'] = str((root / 'cache' / 'python' / 'uv').resolve())
+    os.environ['PIP_CACHE_DIR'] = str((temporary.parent / 'pip').resolve())
+    os.environ['UV_CACHE_DIR'] = str((temporary.parent / 'uv').resolve())
 
 
 def desktop_runtime(root, bundled):

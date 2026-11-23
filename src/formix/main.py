@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 if __package__:
     from .numbered_text import NumberedTextEdit
     from .diagnostics import event as diagnostic_event
-    from .runtime_paths import ROOT, app_version, group_windows_processes
+    from .runtime_paths import ROOT, app_version, group_windows_processes, script_path
     from .button_input import connect_action, connect_navigation
     from .engines import AUDIO, INPUT_TYPES, MODEL_PROFILES, MODEL_REPOS, PAGES, WORKER, compression_options_for_sources, compression_profile, document_targets_for_sources, executable
     from .localization import LANGUAGE_CODES, LANGUAGE_NAMES, LanguageManager
@@ -43,7 +43,7 @@ if __package__:
 else:
     from numbered_text import NumberedTextEdit
     from diagnostics import event as diagnostic_event
-    from runtime_paths import ROOT, app_version, group_windows_processes
+    from runtime_paths import ROOT, app_version, group_windows_processes, script_path
     from button_input import connect_action, connect_navigation
     from engines import AUDIO, INPUT_TYPES, MODEL_PROFILES, MODEL_REPOS, PAGES, WORKER, compression_options_for_sources, compression_profile, document_targets_for_sources, executable
     from localization import LANGUAGE_CODES, LANGUAGE_NAMES, LanguageManager
@@ -1449,7 +1449,7 @@ class Window(QMainWindow):
         self.runtime_errors = []
         self.runtime_check = QProcess(self)
         self.runtime_check.setProgram(sys.executable)
-        self.runtime_check.setArguments(["-X", "utf8", str(Path(__file__).with_name("runtime_check.py"))])
+        self.runtime_check.setArguments(["-X", "utf8", script_path("runtime_check.py")])
         self.runtime_check.readyReadStandardOutput.connect(self.read_runtime_check)
         self.runtime_check.finished.connect(self.finish_runtime_check)
         self.runtime_check.errorOccurred.connect(self.runtime_check_error)
@@ -2538,7 +2538,7 @@ class Window(QMainWindow):
             root.addWidget(update_card)
         self.notes_process = QProcess(page)
         self.notes_process.setProgram(sys.executable)
-        self.notes_process.setArguments(["-X", "utf8", str(Path(__file__).with_name("engine_update.py")), "release-notes"])
+        self.notes_process.setArguments(["-X", "utf8", script_path("engine_update.py"), "release-notes"])
         self.notes_process.finished.connect(self.release_notes_finished)
 
         about_card, about_layout = card(self.language, "about_title", "about_hint")

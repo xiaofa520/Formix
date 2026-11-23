@@ -6,10 +6,12 @@ from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton,
                                QTextBrowser, QVBoxLayout, QWidget)
 if __package__:
+    from .runtime_paths import script_path
     from .background_work import open_folder_async
     from .button_input import connect_action
     from .engine_update import bundled_versions, active_engine
 else:
+    from runtime_paths import script_path
     from background_work import open_folder_async
     from button_input import connect_action
     from engine_update import bundled_versions, active_engine
@@ -174,7 +176,7 @@ class UpdateRow(QWidget):
         self.button.setEnabled(False)
         self.stderr_tail = b""
         self.error_text = ""
-        script=str(Path(__file__).with_name("engine_update.py"))
+        script=script_path("engine_update.py")
         self.process.start(sys.executable,["-X","utf8",script,*args])
 
     def read_messages(self, final=False):

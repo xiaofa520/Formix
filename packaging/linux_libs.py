@@ -13,6 +13,8 @@ soffice = next(office.rglob("soffice"))
 program = soffice.parent
 libdir = program.parent/"formix-libs"
 libdir.mkdir()
+environment = os.environ.copy()
+environment['LD_LIBRARY_PATH'] = f"{program}:{libdir}" + (":" + environment['LD_LIBRARY_PATH'] if environment.get('LD_LIBRARY_PATH') else "")
 # glibc and graphics drivers must match the host OS.
 host = re.compile(r"^(ld-linux|lib(c|m|pthread|dl|rt|resolv|util|anl)\.so|lib(GL|EGL|drm|gbm))")
 for file in list(office.rglob("*")):
@@ -21,9 +23,9 @@ for file in list(office.rglob("*")):
     with file.open("rb") as stream:
         if stream.read(4) != b"\x7fELF":
             continue
-    result = subprocess.run(["ldd",file],capture_output=True,text=True)
+    result = subprocess.run(["ldd",file],capture_output=True,text=True,env=environment)
     for name, path in re.findall(r"^\s*(\S+) => (/\S+)",result.stdout,re.M):
-        if host.match(name) or (libdir/name).exists() or (office/"program"/name).exists():
+        if host.match(name) or (libdir/name).exists() or (program/name).exists() or Path(path).resolve().is_relative_to(office.resolve()):
             continue
         shutil.copy2(path,libdir/name)
 launcher = program/"formix-office"
