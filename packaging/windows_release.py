@@ -25,9 +25,13 @@ def main():
         raise SystemExit(f'Build directory already exists: {work}')
     shutil.copytree(template, work)
     # Generate every Windows resource from the same artwork used by the GUI.
-    from PIL import Image
-    with Image.open(root / 'src/formix/assets/logo1.png') as image:
-        image.convert('RGBA').save(work / 'Formix.ico', sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
+    staged = root / 'build/windows-x64-app'
+    run(staged / 'python/python.exe', '-I', '-c',
+        "from PIL import Image; import sys; "
+        "image = Image.open(sys.argv[1]); "
+        "image.convert('RGBA').save(sys.argv[2], "
+        "sizes=[(n,n) for n in (16,24,32,48,64,128,256)]); image.close()",
+        root / 'src/formix/assets/logo1.png', work / 'Formix.ico')
     shutil.copy2(work / 'Formix.ico', work / 'native/logo.ico')
     version_file = work / 'version.txt'
     version_file.write_text(version_file.read_text(encoding='utf-8')
