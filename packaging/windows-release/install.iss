@@ -6,6 +6,8 @@
 SourceDir={#ProjectDir}
 AppId=FormixDesktop
 AppName={cm:AppTitle}
+AppVerName={cm:AppTitle}
+UninstallDisplayName={cm:AppTitle}
 AppVersion={#Version}
 AppPublisher=xiaofa520
 VersionInfoCompany=xiaofa520
@@ -26,7 +28,7 @@ OutputBaseFilename=formix-win-64-v{#Version}
 Compression=lzma2/fast
 SolidCompression=no
 SetupIconFile=Formix.ico
-UninstallDisplayIcon={app}\Formix.exe,0
+UninstallDisplayIcon={app}\Formix.ico
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "zh_CN"; MessagesFile: "languages/ChineseSimplified.isl"
@@ -45,6 +47,7 @@ zh_TW.StartMenuTask=新增至開始功能表
 [Tasks]
 Name: "startmenu"; Description: "{cm:StartMenuTask}"; Flags: unchecked
 [Files]
+Source: "Formix.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Formix\*"; DestDir: "{app}"; Excludes: "runtime\Formix.exe,runtime\格式转换通.exe,logs\*,cache\*,output\*,models\*,formix\__pycache__\*,*.obj"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "Formix\runtime\Formix.exe"; DestDir: "{app}\runtime"; DestName: "格式转换通.exe"; Languages: zh_CN; Flags: ignoreversion
 Source: "Formix\runtime\Formix.exe"; DestDir: "{app}\runtime"; DestName: "Formix.exe"; Languages: en zh_TW ja ko ru fr; Flags: ignoreversion
