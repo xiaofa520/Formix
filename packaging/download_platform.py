@@ -158,7 +158,13 @@ def get_engines():
         # Validate the official signed executable before shipping it.
         environment = os.environ.copy()
         environment["FORMIX_REDIST"] = str(redist.resolve())
-        subprocess.run(["powershell", "-NoProfile", "-Command",
+        shell = shutil.which("pwsh") or shutil.which("powershell")
+        if not shell:
+            raise RuntimeError("PowerShell is required to verify the Microsoft runtime")
+        environment.pop("PSModulePath", None)
+        subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command",
+                        "$ErrorActionPreference='Stop'; "
+                        "Import-Module ($PSHOME + '/Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1') -ErrorAction Stop; "
                         "$s=Get-AuthenticodeSignature -LiteralPath $env:FORMIX_REDIST; "
                         "if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { exit 1 }"],
                        check=True, env=environment)
