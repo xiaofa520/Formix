@@ -28,6 +28,7 @@ def attach(app, window, root, version):
                 model.parent.mkdir(parents=True, exist_ok=True)
                 model.write_bytes(b'Formix CI model preservation fixture\n' * 1024)
             state = dict(pid=os.getpid(), root=str(root), version=version,
+                         appimage=os.environ.get('APPIMAGE'),
                          setting=settings.value('ci/retention'), model=str(model),
                          model_hash=hashlib.sha256(model.read_bytes()).hexdigest() if model.is_file() else None,
                          visible=window.isVisible(), exposed=window.windowHandle().isExposed())
@@ -39,10 +40,21 @@ def attach(app, window, root, version):
         if command.get('update'):
             timer.stop()
             archive = command.pop('update')
-            control.write_text(json.dumps(command), encoding='utf-8')
-            window.app_update_row.launch_app_update(Path(archive))
+            temporary = control.with_suffix('.probe.tmp')
+            temporary.write_text(json.dumps(command), encoding='utf-8')
+            temporary.replace(control)
+            if not window.app_update_row.launch_app_update(Path(archive)):
+                raise RuntimeError('Update launch failed: ' + window.app_update_row.note.text() + ' ' + window.app_update_row.note.toolTip())
         elif command.get('close'):
             timer.stop()
             window.close()
-    timer.timeout.connect(poll)
+    def guarded_poll():
+        try:
+            poll()
+        except Exception:
+            import traceback
+            timer.stop()
+            failure = control.with_suffix('.error')
+            failure.write_text(traceback.format_exc(), encoding='utf-8')
+    timer.timeout.connect(guarded_poll)
     timer.start()

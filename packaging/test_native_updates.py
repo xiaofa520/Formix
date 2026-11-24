@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import time
 
@@ -14,13 +15,20 @@ def run(*args, **kwargs):
     return subprocess.run([str(x) for x in args], check=True, **kwargs)
 
 
-def wait_report(path, timeout=900):
+def wait_report(path, timeout=900, control=None, process=None):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        # Reap the old launcher after it exits; kill -0 otherwise sees a zombie
+        # and the detached Unix updater waits forever for it.
+        exit_code = process.poll() if process is not None else None
+        if control is not None and control.with_suffix('.error').is_file():
+            raise RuntimeError(control.with_suffix('.error').read_text(encoding='utf-8'))
         if path.is_file():
             state = json.loads(path.read_text(encoding='utf-8'))
             assert state['visible'] and state['exposed'], state
             return state
+        if exit_code not in (None, 0):
+            raise RuntimeError(f'Application exited before reporting its window: {process.returncode}')
         time.sleep(1)
     raise TimeoutError(f'Installed application did not report a visible, responsive window: {path}')
 
@@ -41,6 +49,8 @@ def main():
     evidence.mkdir(parents=True, exist_ok=True)
     control = evidence / 'control.json'
     before_path, after_path = evidence / 'before.json', evidence / 'after.json'
+    for path in (before_path, after_path, control.with_suffix('.error')):
+        path.unlink(missing_ok=True)
     environment = os.environ.copy()
     environment['FORMIX_CI_CONTROL'] = str(control)
     if system == 'Windows':
@@ -57,7 +67,20 @@ def main():
         launcher = Path('/Applications/Formix.app/Contents/MacOS/Formix')
     else:
         raise RuntimeError('Use test_linux_updates.py on Linux')
-    assert launcher.is_file() and (installed / 'release.txt').is_file()
+    download = ROOT / 'build/native-update-download'
+    download.mkdir(exist_ok=True)
+    shutil.copy2(package, download / package.name)
+    package = download / package.name
+    missing = [str(p) for p in (launcher, installed / 'release.txt') if not p.is_file()]
+    if missing:
+        if system == 'Darwin':
+            with (evidence / 'install-path-diagnostics.log').open('w') as output:
+                for command in (['pkgutil', '--pkg-info', 'org.formix.desktop'],
+                                ['pkgutil', '--files', 'org.formix.desktop'],
+                                ['find', '/Applications', str(ROOT / 'build'), '-name', 'Formix.app', '-print']):
+                    subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, check=False)
+            print((evidence / 'initial-install.log').read_text(), flush=True)
+        raise RuntimeError('Installer returned success but required files are missing: ' + ', '.join(missing))
     # Construct an older on-disk state using this release's real installer.
     # This tests installation/replacement, not compatibility with historical releases.
     if system == 'Darwin':
@@ -68,11 +91,11 @@ def main():
     with (evidence / 'application.log').open('w') as output:
         process = subprocess.Popen([str(launcher)], env=environment, stdout=output, stderr=subprocess.STDOUT)
         try:
-            before = wait_report(before_path, 180)
+            before = wait_report(before_path, 180, control, process)
             assert before['version'] == '0.0.0'
             assert before['setting'] == 'keep-this-setting' and before['model_hash']
             write_control(control, {'phase': 'verify', 'report': str(after_path), 'update': str(package)})
-            after = wait_report(after_path)
+            after = wait_report(after_path, control=control, process=process)
             assert after['pid'] != before['pid'], 'Old application was not replaced and restarted'
             assert after['version'] == args.version, after
             for key in ('root', 'setting', 'model', 'model_hash'):
@@ -86,6 +109,16 @@ def main():
                 process.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 process.terminate()
+            time.sleep(3)
+            for path in download.rglob('*.log'):
+                shutil.copy2(path, evidence / (path.parent.name + '-' + path.name))
+            if system == 'Darwin':
+                updater_log = Path.home() / 'Library/Logs/Formix/logs/updater.log'
+                if updater_log.is_file():
+                    shutil.copy2(updater_log, evidence / 'updater.log')
+            output.flush()
+            print((evidence / 'application.log').read_text(errors='replace')[-12000:], flush=True)
+            package.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

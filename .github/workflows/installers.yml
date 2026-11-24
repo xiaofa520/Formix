@@ -53,7 +53,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            dpkg-dev squashfs-tools desktop-file-utils xdotool libegl1 libgl1 libopengl0 libglib2.0-0 \
+            dpkg-dev squashfs-tools desktop-file-utils xdotool x11-utils libegl1 libgl1 libopengl0 libglib2.0-0 \
             libdbus-1-3 libfontconfig1 libfreetype6 libx11-6 libx11-xcb1 \
             libxext6 libxrender1 libxi6 libxkbcommon0 libxkbcommon-x11-0 \
             libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
@@ -103,7 +103,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Formix-${{ matrix.os }}
-          path: dist/*
+          path: |
+            dist/*.exe
+            dist/*.pkg
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.tar.gz
           if-no-files-found: error
           compression-level: 0
   release:

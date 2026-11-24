@@ -1,7 +1,6 @@
 """Linux-only CI integration: install real packages, update, and reopen the GUI."""
 import argparse
 import hashlib
-import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -22,21 +21,6 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def wait_window(process, env, output):
-    deadline = time.monotonic() + 90
-    while time.monotonic() < deadline:
-        found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^Formix$'],
-                               env=env, capture_output=True, text=True)
-        if found.returncode == 0 and found.stdout.strip():
-            window = found.stdout.splitlines()[0]
-            run('xdotool', 'getwindowgeometry', window, env=env, stdout=output)
-            return
-        if process.poll() is not None and process.returncode != 0:
-            raise RuntimeError(f'GUI/updater exited: {process.returncode}')
-        time.sleep(1)
-    raise TimeoutError('Formix window did not become visible within 90 seconds')
-
-
 def stop(process):
     try:
         os.killpg(process.pid, signal.SIGTERM)
@@ -49,51 +33,52 @@ def stop(process):
         process.wait()
 
 
-def exercise(kind, launcher, installed_root, archive, env, evidence):
-    profile = Path(env['HOME'])
-    config = Path(env['XDG_CONFIG_HOME']) / 'Formix/Formix.conf'
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text('[interface]\nlanguage=en\n[ci]\nkeep=preserved-setting\n', encoding='utf-8')
-    model_roots = [Path(env['XDG_DATA_HOME']) / 'Formix/Formix/models/ci-preserve']
-    if kind == 'deb':
-        model_roots.append(installed_root / 'models/ci-preserve')
-    for folder in model_roots:
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / 'weights.bin').write_bytes(os.urandom(8192))
-        (folder / 'config.json').write_text('{"ci": true}')
-    retained = {p: digest(p) for folder in model_roots for p in folder.iterdir()}
-    spec = importlib.util.spec_from_file_location('formix_ci_updater', installed_root / 'formix/app_updater.py')
-    updater = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(updater)
+def exercise(kind, launcher, installed_root, archive, env, evidence, version):
+    from test_native_updates import wait_report, write_control
+    control = evidence / f'{kind}-control.json'
+    before_path, after_path = evidence / f'{kind}-before.json', evidence / f'{kind}-after.json'
+    before_path.unlink(missing_ok=True)
+    after_path.unlink(missing_ok=True)
+    control.with_suffix('.error').unlink(missing_ok=True)
+    environment = {**env, 'FORMIX_CI_CONTROL': str(control)}
+    download = evidence.parent / f'{kind}-update-download'
+    download.mkdir(exist_ok=True)
+    package = download / archive.name
+    shutil.copy2(archive, package)
+    write_control(control, {'phase': 'seed', 'report': str(before_path)})
     log = (evidence / f'{kind}.log').open('w')
-    old = subprocess.Popen([str(launcher)], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    process = None
-    script = None
+    old = subprocess.Popen([str(launcher)], env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    after = None
     try:
-        wait_window(old, env, log)
-        script = updater.prepare_linux_package_update(archive, installed_root, old.pid,
-                                                      str(launcher) if kind == 'appimage' else None)
-        process = subprocess.Popen(['/bin/sh', str(script)], env=env, stdout=log,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        # The updater must wait while the original application is still running.
-        time.sleep(2)
-        assert process.poll() is None, 'Updater did not wait for the old application'
-        stop(old)
-        assert process.wait(timeout=1200) == 0, (script.parent / 'updater.log').read_text()
-        wait_window(process, env, log)
-        for path, expected in retained.items():
-            assert path.is_file() and digest(path) == expected, f'Model changed: {path}'
-        assert 'preserved-setting' in config.read_text(), 'Saved settings were lost'
-        assert launcher.is_file(), 'Original installation path disappeared'
-        shutil.copy2(script.parent / 'updater.log', evidence / f'{kind}-updater.log')
-        print(f'{kind}: initial launch, actual upgrade, GUI restart, settings and models PASS', flush=True)
+        before = wait_report(before_path, 180, control, old)
+        assert before['version'] == '0.0.0', before
+        assert before['setting'] == 'keep-this-setting' and before['model_hash']
+        write_control(control, {'phase': 'verify', 'report': str(after_path), 'update': str(package)})
+        after = wait_report(after_path, 1200, control, old)
+        assert after['pid'] != before['pid']
+        assert after['version'] == version, after
+        for key in ('setting', 'model', 'model_hash'):
+            assert before[key] == after[key], f'{kind}: {key} changed'
+        if kind == 'deb':
+            assert Path(after['root']).resolve() == installed_root.resolve()
+        else:
+            assert Path(after['appimage']).resolve() == launcher.resolve()
+            assert digest(launcher) == digest(archive)
+        print(f'{kind}: installed GUI update, restart, original path, settings and models PASS', flush=True)
     finally:
-        if script is not None and (script.parent / 'updater.log').is_file():
-            shutil.copy2(script.parent / 'updater.log', evidence / f'{kind}-updater.log')
+        write_control(control, {'phase': 'verify', 'report': str(after_path), 'close': True})
+        time.sleep(3)
         stop(old)
-        if process is not None:
-            stop(process)
+        if after is not None:
+            try:
+                os.kill(after['pid'], signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         log.close()
+        print((evidence / f'{kind}.log').read_text(errors='replace')[-12000:], flush=True)
+        for path in download.rglob('*.log'):
+            shutil.copy2(path, evidence / (kind + '-' + path.parent.name + '-' + path.name))
+        package.unlink(missing_ok=True)
 
 
 def main():
@@ -119,15 +104,20 @@ def main():
         # Build an actual older package from the same payload, then upgrade its version.
         control = work / 'deb/DEBIAN/control'
         original = control.read_text()
+        payload_version = work / 'deb/opt/formix/release.txt'
+        original_version = payload_version.read_text()
         olddeb = temp / 'old.deb'
         try:
+            payload_version.write_text('0.0.0')
             control.write_text(original.replace(f'Version: {args.version}\n', 'Version: 0.0.0\n'))
             run('dpkg-deb', '--root-owner-group', '-Zgzip', '--build', work / 'deb', olddeb)
         finally:
             control.write_text(original)
+            payload_version.write_text(original_version)
         run('apt-get', '-y', '--no-remove', 'install', olddeb, env={**env, 'DEBIAN_FRONTEND': 'noninteractive'})
         assert subprocess.check_output(['dpkg-query', '-W', '-f=${Version}', 'formix'], text=True) == '0.0.0'
-        exercise('deb', Path('/opt/formix/Formix'), Path('/opt/formix'), deb, env, evidence)
+        olddeb.unlink()
+        exercise('deb', Path('/opt/formix/Formix'), Path('/opt/formix'), deb, env, evidence, args.version)
         assert subprocess.check_output(['dpkg-query', '-W', '-f=${Version}', 'formix'], text=True) == args.version
         # Build a real older AppImage; test replacement at a path containing spaces.
         appdir = work / 'Formix.AppDir'
@@ -141,7 +131,7 @@ def main():
         finally:
             release.write_text(current)
         before = digest(oldimage)
-        exercise('appimage', oldimage, appdir / 'usr/lib/formix', appimage, env, evidence)
+        exercise('appimage', oldimage, appdir / 'usr/lib/formix', appimage, env, evidence, args.version)
         assert digest(oldimage) == digest(appimage) and digest(oldimage) != before
         print('Both package update integration tests passed', flush=True)
 
