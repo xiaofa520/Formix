@@ -60,6 +60,11 @@ assert Path(executable("ffmpeg")).is_relative_to(app)
 from formix.runtime_paths import optional_engine_missing, active_engine
 from formix.runtime_check import ensure
 from formix.engine_update import engine_release, update_engine
+from formix.runtime_paths import engine_store
+def isolated_store():
+    folder = Path(profile.name) / "engines" / __import__("formix.runtime_paths", fromlist=["SLUG"]).SLUG
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 def isolated_cache(*parts):
     folder = Path(profile.name) / "cache"
     folder = folder.joinpath(*parts)
@@ -73,7 +78,7 @@ for component in ("libvips", "libreoffice"):
     # Real download, verified installation and conversions using an isolated profile.
     # These files never enter the published application directory.
     release = engine_release(component)
-    with patch("formix.engine_update.cache_folder", isolated_cache):
+    with patch("formix.engine_update.cache_folder", isolated_cache), patch("formix.runtime_paths.engine_store", isolated_store), patch("formix.engine_update.engine_store", isolated_store):
         update_engine(component, release["version"], lambda *_: None)
     assert not optional_engine_missing(component)
     assert active_engine(component)[1].is_relative_to(Path(profile.name))
