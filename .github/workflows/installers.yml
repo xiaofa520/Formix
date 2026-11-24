@@ -36,6 +36,8 @@ jobs:
           version="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Check update download format and persistent cache
+        run: python -m unittest discover -s tests -p test_appimage_update.py
       - name: Fetch current platform dependencies only
         run: python packaging/download_platform.py
       - name: Build and check Windows installer

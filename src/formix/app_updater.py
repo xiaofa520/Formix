@@ -270,6 +270,8 @@ def prepare_linux_package_update(archive, root, pid, appimage=None):
     archive, root = Path(archive).resolve(), Path(root).resolve()
     kind = archive.suffix.lower()
     if kind == '.appimage':
+        if archive.is_relative_to(root):
+            raise ValueError('AppImage update must be downloaded outside the temporary application directory')
         if not appimage:
             raise RuntimeError('Cannot determine the original AppImage location')
         target = Path(appimage).resolve(strict=True)

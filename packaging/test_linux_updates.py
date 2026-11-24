@@ -1,6 +1,10 @@
 """Linux-only CI integration: install real packages, update, and reopen the GUI."""
 import argparse
 import hashlib
+import functools
+import http.server
+import threading
+import urllib.parse
 import os
 from pathlib import Path
 import shutil
@@ -49,23 +53,36 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
     log = (evidence / f'{kind}.log').open('w')
     old = subprocess.Popen([str(launcher)], env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     after = None
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=str(download)))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
     try:
         before = wait_report(before_path, 180, control, old)
         assert before['version'] == '0.0.0', before
         assert before['setting'] == 'keep-this-setting' and before['model_hash']
-        write_control(control, {'phase': 'verify', 'report': str(after_path), 'update': str(package)})
+        write_control(control, {'phase': 'verify', 'report': str(after_path), 'download_asset': {
+            'name': package.name, 'version': version, 'size': package.stat().st_size,
+            'digest': 'sha256:' + digest(package),
+            'url': f'http://127.0.0.1:{server.server_port}/' + urllib.parse.quote(package.name)}})
         after = wait_report(after_path, 1200, control, old)
         assert after['pid'] != before['pid']
         assert after['version'] == version, after
-        for key in ('setting', 'model', 'model_hash'):
+        for key in ('setting', 'settings_file', 'model', 'model_hash'):
             assert before[key] == after[key], f'{kind}: {key} changed'
         if kind == 'deb':
             assert Path(after['root']).resolve() == installed_root.resolve()
         else:
+            assert not Path(before['model']).is_relative_to(Path(before['root']))
+            assert not Path(before['settings_file']).is_relative_to(Path(before['root']))
+            assert Path(before['appimage']).resolve() == launcher.resolve()
             assert Path(after['appimage']).resolve() == launcher.resolve()
             assert digest(launcher) == digest(archive)
         print(f'{kind}: installed GUI update, restart, original path, settings and models PASS', flush=True)
     finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
         write_control(control, {'phase': 'verify', 'report': str(after_path), 'close': True})
         time.sleep(3)
         stop(old)
@@ -76,6 +93,12 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
                 pass
         log.close()
         print((evidence / f'{kind}.log').read_text(errors='replace')[-12000:], flush=True)
+        app_logs = Path(env['XDG_DATA_HOME']) / 'Formix/logs'
+        for path in app_logs.glob('*.log'):
+            shutil.copy2(path, evidence / (kind + '-' + path.name))
+            print(path.read_text(errors='replace')[-12000:], flush=True)
+        for path in Path(env['XDG_CACHE_HOME']).rglob('updater.log'):
+            shutil.copy2(path, evidence / (kind + '-' + path.parent.name + '-' + path.name))
         for path in download.rglob('*.log'):
             shutil.copy2(path, evidence / (kind + '-' + path.parent.name + '-' + path.name))
         package.unlink(missing_ok=True)

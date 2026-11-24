@@ -120,9 +120,11 @@ def setup(directory=None):
         from .runtime_paths import ROOT
     else:
         from runtime_paths import ROOT
-    candidates = [Path(directory)] if directory else [ROOT/'logs',
-        Path(os.environ.get('LOCALAPPDATA', Path.home()/'.local/share'))/'Formix/logs',
-        Path(tempfile.gettempdir())/'Formix/logs']
+    user_logs = Path(os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_DATA_HOME')
+                     or Path.home()/'.local/share')/'Formix/logs'
+    candidates = [Path(directory)] if directory else (
+        ([] if os.environ.get('APPIMAGE') else [ROOT/'logs']) +
+        [user_logs, Path(tempfile.gettempdir())/'Formix/logs'])
     failures = []
     for folder in candidates:
         try:

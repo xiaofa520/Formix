@@ -15,7 +15,7 @@ from formix.engines import plan
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QSettings
 from formix.localization import LanguageManager
-from formix.main import Window
+from formix.main import Window, instance_server_name
 from formix.runtime_paths import executable, script_path
 from PIL import Image
 import pyvips
@@ -23,6 +23,36 @@ import pdfplumber
 
 os.environ["QT_QPA_PLATFORM"]="offscreen"
 qt=QApplication([])
+# The endpoint must stay stable even if AppImage extraction/TMPDIR changes.
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtCore import QStandardPaths
+runtime = Path(QStandardPaths.writableLocation(QStandardPaths.RuntimeLocation))
+runtime.mkdir(parents=True, exist_ok=True)
+endpoint = instance_server_name(runtime, 'smoke-' + str(os.getpid()))
+previous_tmp = os.environ.get('TMPDIR')
+try:
+    os.environ['TMPDIR'] = str(Path(profile.name) / ('long-appimage-path-' * 10))
+    server = QLocalServer()
+    assert server.listen(endpoint), server.errorString()
+    os.environ['TMPDIR'] = str(Path(profile.name) / 'different-extraction')
+    client = QLocalSocket()
+    client.connectToServer(instance_server_name(runtime, 'smoke-' + str(os.getpid())))
+    assert client.waitForConnected(3000), client.errorString()
+    assert server.waitForNewConnection(3000)
+    peer = server.nextPendingConnection()
+    client.write(b'activate')
+    client.flush()
+    assert peer.bytesAvailable() or peer.waitForReadyRead(3000)
+    assert bytes(peer.readAll()) == b'activate'
+    client.close()
+    peer.close()
+    server.close()
+finally:
+    if previous_tmp is None:
+        os.environ.pop('TMPDIR', None)
+    else:
+        os.environ['TMPDIR'] = previous_tmp
+
 for entry in ('worker.py', 'runtime_check.py', 'engine_update.py'):
     assert Path(script_path(entry)).is_file(), entry
 assert Path(executable("ffmpeg")).is_relative_to(app)

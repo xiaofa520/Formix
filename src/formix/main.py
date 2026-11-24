@@ -3266,6 +3266,12 @@ def apply_theme(app, dark=False):
 
 
 
+def instance_server_name(lock_dir, identity):
+    if os.name == 'nt':
+        return 'Formix.Desktop.' + identity
+    return str(lock_dir / ('formix-' + identity))
+
+
 def main():
     group_windows_processes()
     QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -3282,7 +3288,10 @@ def main():
     server_name = 'Formix.Desktop.' + identity
     lock_dir = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation))
     lock_dir.mkdir(parents=True, exist_ok=True)
-    instance_lock = QLockFile(str(lock_dir / (server_name + '.lock')))
+    # Unix sockets must not follow TMPDIR into an AppImage extraction tree.
+    # Both instances must use the same short, persistent runtime endpoint.
+    server_name = instance_server_name(lock_dir, identity)
+    instance_lock = QLockFile(str(lock_dir / ('Formix.Desktop.' + identity + '.lock')))
     instance_lock.setStaleLockTime(0)
     if not instance_lock.tryLock(0):
         # The first process may still be constructing its window.
@@ -3301,8 +3310,10 @@ def main():
     server = QLocalServer(app)
     server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
     if not server.listen(server_name):
+        message = f'Single-instance listener failed: {server_name}: {server.errorString()}'
+        print(message, file=sys.stderr, flush=True)
         instance_lock.unlock()
-        return 1
+        raise RuntimeError(message)
     language = LanguageManager()
     icon = Path(__file__).with_name("assets") / "logo1.png"
     if icon.exists():

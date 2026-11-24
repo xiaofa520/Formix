@@ -29,7 +29,7 @@ def attach(app, window, root, version):
                 model.write_bytes(b'Formix CI model preservation fixture\n' * 1024)
             state = dict(pid=os.getpid(), root=str(root), version=version,
                          appimage=os.environ.get('APPIMAGE'),
-                         setting=settings.value('ci/retention'), model=str(model),
+                         setting=settings.value('ci/retention'), settings_file=settings.fileName(), model=str(model),
                          model_hash=hashlib.sha256(model.read_bytes()).hexdigest() if model.is_file() else None,
                          visible=window.isVisible(), exposed=window.windowHandle().isExposed())
             destination = Path(command['report'])
@@ -37,6 +37,13 @@ def attach(app, window, root, version):
             temporary.write_text(json.dumps(state), encoding='utf-8')
             temporary.replace(destination)
             reported = True
+        if command.get('download_asset'):
+            from unittest.mock import patch
+            from formix import engine_update
+            asset = command.pop('download_asset')
+            directory = engine_update.cache_folder('app', engine_update.SLUG, asset['version'])
+            with patch.object(engine_update, 'latest', return_value=asset):
+                command['update'] = engine_update.fetch(asset['version'], directory)
         if command.get('update'):
             timer.stop()
             archive = command.pop('update')

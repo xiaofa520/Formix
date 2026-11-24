@@ -39,7 +39,7 @@ def cache_folder(*parts):
         fallback = Path.home() / "Library" / "Caches" / "Formix"
     else:
         fallback = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "Formix"
-    folder = base.joinpath(*parts)
+    folder = (fallback if os.environ.get("APPIMAGE") else base).joinpath(*parts)
     try:
         folder.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryFile(dir=folder):
@@ -244,7 +244,7 @@ def latest(release=None, *, for_repair=False):
     for asset in release["assets"]:
         digest = asset.get("digest") or ""
         if asset["name"].casefold() in names and digest.startswith("sha256:"):
-            return dict(version=str(version),size=asset["size"],digest=digest,url=asset["browser_download_url"])
+            return dict(name=asset["name"],version=str(version),size=asset["size"],digest=digest,url=asset["browser_download_url"])
     raise ValueError("发行页尚无适用于本机的新版引擎安装包")
 
 def fetch(version, directory):
@@ -252,9 +252,12 @@ def fetch(version, directory):
     if not asset or asset["version"] != version:
         raise ValueError("发行版本已变更，请重新检查更新")
     directory.mkdir(parents=True,exist_ok=True)
-    target = directory / ASSET
+    name = asset.get("name", ASSET)
+    if Path(name).name != name or "/" in name or "\\" in name:
+        raise ValueError("Invalid release filename")
+    target = directory / name
     with tempfile.TemporaryDirectory(dir=directory) as tmp:
-        partial = Path(tmp)/ASSET
+        partial = Path(tmp)/name
         digest = hashlib.sha256()
         with urllib.request.urlopen(asset["url"],timeout=60) as response, partial.open("wb") as stream:
             while chunk := response.read(1024*1024):

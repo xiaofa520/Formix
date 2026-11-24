@@ -13,6 +13,8 @@ def configure_temporary_storage(root):
     import tempfile
     temporary = (root / 'cache' / 'python' / 'tmp').resolve()
     try:
+        if os.environ.get('APPIMAGE'):
+            raise OSError('AppImage temporary extraction is not persistent storage')
         temporary.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryFile(dir=temporary):
             pass
