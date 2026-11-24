@@ -26,6 +26,9 @@ class ModelDownloadTests(unittest.TestCase):
                 self.assertEqual(probe.call_count, 2)
 
     def setUp(self):
+        sources = patch.object(worker, 'MULTISOURCE_MODELS', {})
+        sources.start()
+        self.addCleanup(sources.stop)
         # These are isolated download/runtime tests; a missed mock must never install packages.
         guard = patch.object(subprocess, 'Popen', side_effect=AssertionError('Unexpected real subprocess in model test'))
         guard.start()

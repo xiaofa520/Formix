@@ -113,9 +113,40 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
           compression-level: 0
+  model-sources:
+    name: Model downloads and OCR (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, macos-15, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU OCR test dependencies
+        run: python -m pip install "rapidocr>=3.4,<4" "onnxruntime>=1.20,<2" Pillow packaging psutil
+      - name: Test source ranking, failures and incomplete downloads
+        shell: bash
+        run: |
+          python -m unittest discover -s tests -p test_model_sources.py
+          python -m unittest discover -s tests -p test_model_download.py
+      - name: Test real source downloads and offline OCR
+        run: python packaging/test_model_sources_live.py
+      - name: Upload model source test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Model-source-test-logs-${{ runner.os }}
+          path: build/model-source-test-logs/
+          if-no-files-found: ignore
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, model-sources]
     runs-on: ubuntu-22.04
     permissions:
       contents: write

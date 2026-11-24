@@ -1,4 +1,5 @@
 """Short-lived media workers. Heavy libraries never enter the GUI process."""
+import hashlib
 import csv
 import os
 import html
@@ -13,11 +14,13 @@ import time
 import zipfile
 from pathlib import Path
 if __package__:
+    from .model_sources import MODELSCOPE_REPOS as MULTISOURCE_MODELS
     from .engines import MODEL_PROFILES, MODEL_REPOS, media_threads
     from .output_safety import csv_text, embed_html_assets
     from .recognition_layout import grounded, dots, docling_result, generation_status, table_only_page
     from .process_utils import run_pip, run_process, timeout_setting
 else:
+    from model_sources import MODELSCOPE_REPOS as MULTISOURCE_MODELS
     from engines import MODEL_PROFILES, MODEL_REPOS, media_threads
     from output_safety import csv_text, embed_html_assets
     from recognition_layout import grounded, dots, docling_result, generation_status, table_only_page
@@ -67,6 +70,9 @@ def configure_download_network():
 
 def manifest(key, revision="main"):
     configure_download_network()
+    if key in MULTISOURCE_MODELS:
+        plans = model_source_plans(key)
+        return 'auto', {n: e['size'] for n, e in plans[0]['files'].items()}
     repo = MODEL_REPOS[key]
     url = f"https://huggingface.co/api/models/{repo}/revision/{revision}?blobs=true"
     with urllib.request.urlopen(url, timeout=30) as response:
@@ -177,14 +183,45 @@ def prepare_private_model_runtime(models, key):
     return target
 
 
+def model_source_plans(key="deepseek-ocr"):
+    configure_download_network()
+    if __package__:
+        from .model_sources import ranked_sources
+    else:
+        from model_sources import ranked_sources
+    return ranked_sources(key)
+
+
 def download(target, key, revision):
+    if key not in MULTISOURCE_MODELS or (intel_mac() and key not in {'granite-docling-258m', 'smoldocling', 'smolvlm-500m', 'pp-ocrv5-mobile'}):
+        return _download(target, key, revision)
+    if target.exists():
+        raise FileExistsError(target)
+    plans = model_source_plans(key)
+    for index, plan in enumerate(plans):
+        try:
+            return _download(target, key, revision, plan)
+        except OSError:
+            if index + 1 == len(plans):
+                raise
+            # Remove this source's partial files; never mix repository snapshots.
+            for name in plan['files']:
+                (target / name).unlink(missing_ok=True)
+            print('Download source failed; switching to ' + plans[index + 1]['source'], file=sys.stderr, flush=True)
+
+
+def _download(target, key, revision, source_plan=None):
     if intel_mac() and key not in {"granite-docling-258m", "smoldocling", "smolvlm-500m", "pp-ocrv5-mobile"}:
         raise ValueError("Intel Mac: select Granite Docling for the compatible CPU runtime.")
-    print(f"Hugging Face · {MODEL_REPOS[key]} @ {revision}", file=sys.stderr, flush=True)
-    revision, files = manifest(key, revision)
+    print(f"{source_plan['source'] if source_plan else 'Hugging Face'} · {source_plan.get('repo', MODEL_REPOS[key]) if source_plan else MODEL_REPOS[key]} @ {revision}", file=sys.stderr, flush=True)
+    if source_plan:
+        files = {n: e['size'] for n, e in source_plan['files'].items()}
+        print('Selected source: ' + source_plan['source'], file=sys.stderr, flush=True)
+    else:
+        revision, files = manifest(key, revision)
     if shutil.disk_usage(target.parent).free < sum(files.values()) + 256 * 1024**2:
         raise ValueError(tr("model_disk_space"))
-    target.mkdir()
+    target.mkdir(exist_ok=source_plan is not None)
     configure_download_network()
     if key in PRIVATE_MODEL_PACKAGES:
         prepare_private_model_runtime(target, key)
@@ -201,10 +238,13 @@ def download(target, key, revision):
         destination = target / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         url = f"https://huggingface.co/{MODEL_REPOS[key]}/resolve/{revision}/{quote(name, safe='/')}"
+        if source_plan:
+            url = source_plan['files'][name]['url']
         for attempt in range(3):
             print(f"↓ {name} ({size / 1024**2:.2f} MiB) → {destination.parent}",
                   file=sys.stderr, flush=True)
             received = 0
+            checksum = hashlib.sha256()
             last_report = 0
             try:
                 with urllib.request.urlopen(url, timeout=60) as response, destination.open("wb") as stream:
@@ -213,6 +253,7 @@ def download(target, key, revision):
                         if not block:
                             break
                         stream.write(block)
+                        checksum.update(block)
                         received += len(block)
                         now = time.monotonic()
                         if now - last_report >= .2:
@@ -221,6 +262,9 @@ def download(target, key, revision):
                             last_report = now
                 if received != size:
                     raise OSError(f"Incomplete model file: {name} ({received}/{size})")
+                expected = source_plan['files'][name].get('sha256') if source_plan else None
+                if expected and checksum.hexdigest() != expected:
+                    raise OSError(f'Model checksum mismatch: {name}')
                 break
             except (OSError, TimeoutError) as exc:
                 if attempt == 2:
@@ -235,7 +279,13 @@ def download(target, key, revision):
 
 
 def mobile_dictionary(models):
-    tokens = json.loads((models / "PP-OCRv5_mobile_rec.dict.json").read_text(encoding="utf-8"))
+    dictionary = models / "PP-OCRv5_mobile_rec.dict.json"
+    if dictionary.is_file():
+        tokens = json.loads(dictionary.read_text(encoding="utf-8"))
+    else:
+        tokens = (models / "PP-OCRv5_mobile_rec.dict.txt").read_text(encoding="utf-8").splitlines()
+    if not isinstance(tokens, list) or len(tokens) != 18383 or any(not isinstance(t, str) or not t for t in tokens):
+        raise ValueError("Invalid PP-OCRv5 Mobile dictionary")
     (models / "characters.txt").write_text("\n".join(tokens) + "\n", encoding="utf-8")
 
 
