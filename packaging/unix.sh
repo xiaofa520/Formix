@@ -29,5 +29,6 @@ export SAL_USE_VCLPLUGIN=svp
 exec "$root/python/bin/python3.11" -I "$root/main.py" "$@"
 SCRIPT
   chmod +x "$app/Formix"
+  python3 packaging/linux_packages.py "$app" "$version"
   tar -C build -czf "dist/formix-linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/64/')-v$version.tar.gz" "$(basename "$app")"
 fi

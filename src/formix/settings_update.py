@@ -3,8 +3,8 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from PySide6.QtCore import QProcess, QSize, Signal, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QProcess, QSize, Signal, Qt, QUrl
+from PySide6.QtGui import QIcon, QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton,
                                QTextBrowser, QVBoxLayout, QWidget)
 if __package__:
@@ -284,6 +284,43 @@ class UpdateRow(QWidget):
 
     def launch_app_update(self, archive):
         """Hand a verified release to a detached, platform-specific installer."""
+        if SYSTEM == 'Windows' and (ROOT / 'release.txt').is_file():
+            try:
+                from formix.app_updater import prepare_windows_update
+                script = prepare_windows_update(archive, ROOT, os.getpid())
+                powershell = str(Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe')
+                started = QProcess.startDetached(powershell, ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', str(script)], str(script.parent))
+                if isinstance(started, tuple):
+                    started = started[0]
+                if not started:
+                    raise RuntimeError('Cannot start installer helper')
+            except (OSError, RuntimeError, KeyError) as error:
+                self.set_note('app_update_launch_failed')
+                self.note.setToolTip(str(error))
+                return False
+            self.set_note('app_update_installing')
+            self.window().close()
+            return True
+        if SYSTEM == 'Linux' and archive.suffix.lower() in {'.deb', '.appimage'}:
+            try:
+                if __package__:
+                    from .app_updater import prepare_linux_package_update
+                else:
+                    from app_updater import prepare_linux_package_update
+                script = prepare_linux_package_update(archive, ROOT, os.getpid(), os.environ.get('APPIMAGE'))
+                started = QProcess.startDetached('/bin/sh', [str(script)], str(script.parent))
+                if isinstance(started, tuple):
+                    started = started[0]
+                if not started:
+                    raise RuntimeError('Could not start package updater')
+            except (OSError, RuntimeError, ValueError) as error:
+                self.end_progress()
+                self.set_note('app_update_launch_failed')
+                self.note.setToolTip(str(error))
+                return False
+            self.set_note('app_update_installing')
+            self.window().close()
+            return True
         if not (ROOT / "release.txt").is_file():
             self.set_note("app_update_packaged_only")
             self.note.setToolTip(str(archive))

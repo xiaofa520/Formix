@@ -1123,8 +1123,9 @@ class Window(QMainWindow):
         active = self.language.settings.value("pdf/model", "", type=str)
         available_model_ram = available_system_memory_gib()
         recommended_model = recommended_pdf_model(available_model_ram)
-        preferred_model_root = ROOT / "models"
         legacy_model_root = Path(app_data) / "models"
+        # AppImage extract-and-run paths are writable but temporary.
+        preferred_model_root = legacy_model_root if os.environ.get('APPIMAGE') else ROOT / "models"
         try:
             preferred_model_root.mkdir(parents=True, exist_ok=True)
             probe = preferred_model_root / f".write-check-{os.getpid()}"
@@ -3322,6 +3323,9 @@ def main():
         window.activateWindow()
     server.newConnection.connect(activate_existing)
     window.show()
+    if os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('FORMIX_CI_CONTROL'):
+        from formix.ci_update_probe import attach
+        attach(app, window, ROOT, app_version())
     try:
         return app.exec()
     finally:

@@ -53,7 +53,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            dpkg-dev libegl1 libgl1 libopengl0 libglib2.0-0 \
+            dpkg-dev squashfs-tools desktop-file-utils xdotool libegl1 libgl1 libopengl0 libglib2.0-0 \
             libdbus-1-3 libfontconfig1 libfreetype6 libx11-6 libx11-xcb1 \
             libxext6 libxrender1 libxi6 libxkbcommon0 libxkbcommon-x11-0 \
             libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
@@ -77,6 +77,29 @@ jobs:
           QT_QPA_PLATFORM=offscreen "$app/python/bin/python3.11" packaging/smoke.py "$app"
           xvfb-run -a env QT_QPA_PLATFORM=xcb "$app/python/bin/python3.11" -c "from PySide6.QtWidgets import QApplication,QWidget; a=QApplication([]); w=QWidget(); w.show(); a.processEvents(); w.close()"
           bash packaging/unix.sh "$VERSION"
+      - name: Install, upgrade and reopen Linux packages
+        if: runner.os == 'Linux'
+        timeout-minutes: 35
+        run: sudo -E xvfb-run -a "$(command -v python)" packaging/test_linux_updates.py "$VERSION"
+      - name: Install, update and reopen Windows and macOS applications
+        if: runner.os != 'Linux'
+        timeout-minutes: 25
+        shell: bash
+        run: python packaging/test_native_updates.py "$VERSION"
+      - name: Upload native upgrade test logs
+        if: always() && runner.os != 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Native-upgrade-test-logs-${{ runner.os }}
+          path: build/native-update-test-logs/
+          if-no-files-found: ignore
+      - name: Upload Linux upgrade test logs
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux-upgrade-test-logs
+          path: build/linux-update-test-logs/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Formix-${{ matrix.os }}

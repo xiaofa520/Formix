@@ -235,6 +235,11 @@ def latest(release=None, *, for_repair=False):
     names = {ASSET.casefold()}
     system, arch = SLUG.rsplit('-', 1)
     label, extension = {'windows': ('win', 'exe'), 'macos': ('mac', 'pkg'), 'linux': ('linux', 'tar.gz')}[system]
+    if system == 'linux' and (ROOT / 'package-format').is_file():
+        kind = (ROOT / 'package-format').read_text(encoding='utf-8').strip()
+        if kind in {'deb', 'appimage'}:
+            extension = 'deb' if kind == 'deb' else 'appimage'
+            names.clear()
     names.add(f"formix-{label}-{'64' if arch == 'x64' else arch}-v{version}.{extension}")
     for asset in release["assets"]:
         digest = asset.get("digest") or ""

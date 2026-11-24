@@ -16,6 +16,7 @@ LANGUAGE_NAMES = {
 
 # Tuple order follows LANGUAGE_CODES. Keys double as stable IDs for Qt widgets.
 TEXT = {
+    "app_update_package_ready": ("新版已下载，请安装或替换应用文件后重新打开。", "新版已下載，請安裝或替換應用程式檔案後重新開啟。", "Update downloaded. Install it or replace the application file, then reopen.", "更新をダウンロードしました。インストールまたは置換後に再起動してください。", "업데이트를 다운로드했습니다. 설치 또는 교체 후 다시 여세요.", "Обновление загружено. Установите или замените файл приложения и откройте его снова.", "Mise à jour téléchargée. Installez-la ou remplacez le fichier de l’application, puis rouvrez-la."),
     "image_ocr_model": ("识别模型", "識別模型", "Recognition model", "認識モデル", "인식 모델", "Модель распознавания", "Modèle de reconnaissance"),
     "image_ocr_model_hint": ('<a href="settings" style="color: #ffffff; text-decoration: none;">未下载的模型请到设置中下载</a>', "獨立於 PDF 模型；請先在設定下載模型。", '<a href="settings" style="color: #ffffff; text-decoration: none;">Download missing models in Settings</a>', "PDF とは別のモデルです。設定でダウンロードしてください。", "PDF와 별도 설정입니다. 설정에서 모델을 다운로드하세요.", "Независимо от PDF. Загрузите модель в настройках.", "Indépendant du PDF. Téléchargez les modèles dans les paramètres."),
     "gpu_hybrid": ("CPU + 显卡协同", "CPU + 顯示卡協同", "CPU + GPU", "CPU + GPU", "CPU + GPU", "CPU + GPU", "CPU + GPU"),

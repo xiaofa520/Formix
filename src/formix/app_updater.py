@@ -165,6 +165,10 @@ def apply_linux_update(archive, root, log_file):
 
 
 def run_macos_installer(archive, bundle, log_file):
+    # Passwordless administrator setups (including hosted CI) need no dialog.
+    if subprocess.run(['/usr/bin/sudo', '-n', '/usr/bin/true'], capture_output=True).returncode == 0:
+        subprocess.run(['/usr/bin/sudo', '-n', '/usr/sbin/installer', '-pkg', str(archive), '-target', '/'], check=True)
+        return
     script = '''on run argv
 set packagePath to POSIX path of (item 1 of argv)
 do shell script "/usr/sbin/installer -pkg " & quoted form of packagePath & " -target /" with administrator privileges
@@ -195,7 +199,7 @@ def start_app(platform_name, launcher, bundle, log_file, user_session=None):
                 os.setuid(uid)
 
         if platform_name == "darwin":
-            subprocess.Popen(["/usr/bin/open", "-a", str(bundle)], close_fds=True)
+            subprocess.Popen([str(Path(bundle) / 'Contents/MacOS/Formix')], close_fds=True)
         elif launcher and Path(launcher).is_file():
             subprocess.Popen([str(launcher)], cwd=str(Path(launcher).parent), close_fds=True,
                              env=environment, preexec_fn=drop_privileges)
@@ -260,5 +264,93 @@ def main():
             Path(args.user_session).unlink(missing_ok=True)
 
 
-if __name__ == "__main__":
+def prepare_linux_package_update(archive, root, pid, appimage=None):
+    """Create an external shell updater that survives AppImage unmounting."""
+    import shlex
+    archive, root = Path(archive).resolve(), Path(root).resolve()
+    kind = archive.suffix.lower()
+    if kind == '.appimage':
+        if not appimage:
+            raise RuntimeError('Cannot determine the original AppImage location')
+        target = Path(appimage).resolve(strict=True)
+        if target == archive:
+            raise ValueError('Update download must differ from the installed AppImage')
+        launcher = target
+        needs_admin = not os.access(target.parent, os.W_OK | os.X_OK)
+    elif kind == '.deb':
+        if root != Path('/opt/formix'):
+            raise RuntimeError('The installed Debian package is not at /opt/formix')
+        target = root
+        launcher = root / 'Formix'
+        needs_admin = os.geteuid() != 0
+    else:
+        raise ValueError('Unsupported package format')
+    pkexec = shutil.which('pkexec')
+    if needs_admin and not pkexec:
+        raise RuntimeError('Administrator authorization requires pkexec')
+    work = Path(tempfile.mkdtemp(prefix='formix-package-update-', dir=archive.parent))
+    apply = work / 'apply.sh'
+    if kind == '.appimage':
+        body = '''#!/bin/sh
+set -eu
+archive=$1
+target=$2
+stage=$(mktemp "$(dirname "$target")/.formix-new-XXXXXX")
+trap 'rm -f -- "$stage"' EXIT HUP INT TERM
+cp -- "$archive" "$stage"
+chmod --reference="$target" "$stage"
+chmod u+x "$stage"
+mv -f -- "$stage" "$target"
+'''
+    else:
+        body = '''#!/bin/sh
+set -eu
+[ "$(dpkg-deb -f "$1" Package)" = formix ]
+[ "$(dpkg-query -W -f='${Status}' formix)" = 'install ok installed' ]
+export DEBIAN_FRONTEND=noninteractive
+exec /usr/bin/apt-get -y --no-remove -o DPkg::Options::=--force-confold install "$1"
+'''
+    apply.write_text(body, encoding='utf-8')
+    command = ([pkexec] if needs_admin else []) + ['/bin/sh', str(apply), str(archive), str(target)]
+    # The runtime mount disappears after the GUI exits. Do not use its Python,
+    # libraries, working directory or AppImage environment to restart the app.
+    script = work / 'update.sh'
+    log_file = work / 'updater.log'
+    text = '#!/bin/sh\n'
+    text += 'unset APPIMAGE APPDIR OWD LD_LIBRARY_PATH LD_PRELOAD PYTHONHOME PYTHONPATH QT_PLUGIN_PATH QML2_IMPORT_PATH TMPDIR TMP TEMP\n'
+    text += 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nexport PATH\n'
+    text += 'cd /\n'
+    text += 'exec >>' + shlex.quote(str(log_file)) + ' 2>&1\n'
+    text += f'count=0\nwhile kill -0 {int(pid)} 2>/dev/null; do\n'
+    text += ' count=$((count+1))\n [ "$count" -le 1800 ] || exit 1\n sleep 1\ndone\n'
+    text += shlex.join(command) + '\nresult=$?\n'
+    text += 'printf "Update exit status: %s\\n" "$result"\n'
+    text += shlex.quote(str(launcher)) + ' &\n'
+    text += 'exit "$result"\n'
+    script.write_text(text, encoding='utf-8')
+    return script
+
+
+if __name__ == '__main__':
     main()
+
+
+def prepare_windows_update(archive, root, pid):
+    """Run outside the private Python runtime so its DLLs can be replaced."""
+    archive, root = Path(archive).resolve(), Path(root).resolve()
+    work = Path(tempfile.mkdtemp(prefix='formix-install-', dir=archive.parent))
+    quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+    script = work / 'install.ps1'
+    parameters = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS /LOG="' + str(work / 'installer.log') + '"'
+    script.write_text(
+        "$ErrorActionPreference = 'Stop'\n"
+        f"Wait-Process -Id {int(pid)} -ErrorAction SilentlyContinue\n"
+        "Start-Sleep -Seconds 2\n"
+        "try {\n"
+        f" $installer = Start-Process -FilePath {quote(archive)} -ArgumentList {quote(parameters)} -Wait -PassThru\n"
+        " if ($installer.ExitCode -notin @(0,3010)) { throw ('Installer exit: ' + $installer.ExitCode) }\n"
+        "} finally {\n"
+        " $env:PYINSTALLER_RESET_ENVIRONMENT = '1'\n"
+        f" Start-Process -FilePath {quote(root / 'Formix.exe')} -WorkingDirectory {quote(root)}\n"
+        "}\n", encoding='utf-8-sig')
+    return script
