@@ -49,7 +49,9 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
     download.mkdir(exist_ok=True)
     package = download / archive.name
     shutil.copy2(archive, package)
-    write_control(control, {'phase': 'seed', 'report': str(before_path)})
+    checks = {'verify_payload': str(ROOT / 'packaging/payload_integrity.py'),
+              'verify_runtime': str(ROOT / 'packaging/check_installed_runtime.py')}
+    write_control(control, {'phase': 'seed', 'report': str(before_path), **checks})
     log = (evidence / f'{kind}.log').open('w')
     old = subprocess.Popen([str(launcher)], env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     after = None
@@ -58,10 +60,10 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        before = wait_report(before_path, 180, control, old)
+        before = wait_report(before_path, 600, control, old)
         assert before['version'] == '0.0.0', before
         assert before['setting'] == 'keep-this-setting' and before['model_hash']
-        write_control(control, {'phase': 'verify', 'report': str(after_path), 'download_asset': {
+        write_control(control, {'phase': 'verify', 'report': str(after_path), **checks, 'download_asset': {
             'name': package.name, 'version': version, 'size': package.stat().st_size,
             'digest': 'sha256:' + digest(package),
             'url': f'http://127.0.0.1:{server.server_port}/' + urllib.parse.quote(package.name)}})

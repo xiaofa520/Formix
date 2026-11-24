@@ -18,6 +18,7 @@ SCRIPT
 <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>org.formix.desktop</string><key>CFBundleName</key><string>格式转换通</string><key>CFBundleDisplayName</key><string>格式转换通</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>$version</string><key>CFBundleExecutable</key><string>Formix</string></dict></plist>
 PLIST
   QT_QPA_PLATFORM=offscreen "$app/Resources/python/bin/python3.11" packaging/smoke.py "$app/Resources"
+  python3 packaging/payload_integrity.py write "$app/Resources"
   pkgbuild --root build/root --component-plist packaging/macos-components.plist --identifier org.formix.desktop --version "$version" --install-location / "dist/formix-mac-${arch/x64/64}-v$version.pkg"
 else
   app="build/linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x64/')-app"
@@ -29,6 +30,7 @@ export SAL_USE_VCLPLUGIN=svp
 exec "$root/python/bin/python3.11" -I "$root/main.py" "$@"
 SCRIPT
   chmod +x "$app/Formix"
+  python3 packaging/payload_integrity.py write "$app"
   python3 packaging/linux_packages.py "$app" "$version"
   tar -C build -czf "dist/formix-linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/64/')-v$version.tar.gz" "$(basename "$app")"
 fi

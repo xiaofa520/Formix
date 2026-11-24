@@ -38,6 +38,10 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
       - name: Check update download format and persistent cache
         run: python -m unittest discover -s tests -p test_appimage_update.py
+      - name: Check packaging exclusion and integrity rules
+        run: python -m unittest discover -s tests -p test_payload_integrity.py
+      - name: Check optional engine packaging and startup behavior
+        run: python -m unittest discover -s tests -p test_optional_engines.py
       - name: Fetch current platform dependencies only
         run: python packaging/download_platform.py
       - name: Build and check Windows installer

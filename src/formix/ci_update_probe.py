@@ -20,6 +20,10 @@ def attach(app, window, root, version):
             return
         command = json.loads(control.read_text(encoding='utf-8'))
         if not reported:
+            if command.get('verify_payload'):
+                import subprocess, sys
+                subprocess.run([sys.executable, '-I', command['verify_payload'], 'verify', str(root)], check=True, timeout=300)
+                subprocess.run([sys.executable, '-I', command['verify_runtime'], sys.executable], check=True, timeout=240)
             settings = window.language.settings
             model = window.model_root / 'ci-retention-fixture' / 'weights.bin'
             if command['phase'] == 'seed':

@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import logging
+from unittest.mock import patch
 from pathlib import Path
 
 app=Path(sys.argv[1]).resolve()
@@ -18,7 +20,6 @@ from formix.localization import LanguageManager
 from formix.main import Window, instance_server_name
 from formix.runtime_paths import executable, script_path
 from PIL import Image
-import pyvips
 import pdfplumber
 
 os.environ["QT_QPA_PLATFORM"]="offscreen"
@@ -56,7 +57,26 @@ finally:
 for entry in ('worker.py', 'runtime_check.py', 'engine_update.py'):
     assert Path(script_path(entry)).is_file(), entry
 assert Path(executable("ffmpeg")).is_relative_to(app)
-assert Path(executable("soffice")).is_relative_to(app)
+from formix.runtime_paths import optional_engine_missing, active_engine
+from formix.runtime_check import ensure
+from formix.engine_update import engine_release, update_engine
+def isolated_cache(*parts):
+    folder = Path(profile.name) / "cache"
+    folder = folder.joinpath(*parts)
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+assert not (app / "vendor/office").exists()
+assert not (app / "vendor/LibreOffice.app").exists()
+for component in ("libvips", "libreoffice"):
+    assert optional_engine_missing(component), component
+    assert ensure(component) == {"optional_missing": True}
+    # Real download, verified installation and conversions using an isolated profile.
+    # These files never enter the published application directory.
+    release = engine_release(component)
+    with patch("formix.engine_update.cache_folder", isolated_cache):
+        update_engine(component, release["version"], lambda *_: None)
+    assert not optional_engine_missing(component)
+    assert active_engine(component)[1].is_relative_to(Path(profile.name))
 with tempfile.TemporaryDirectory() as tmp:
     root=Path(tmp)
     class SmokeWindow(Window):
@@ -85,4 +105,12 @@ with tempfile.TemporaryDirectory() as tmp:
     cmd, out = plan("图片转换", ai, "svg", None, root, root / "uninstalled-model")
     subprocess.run(cmd, check=True, timeout=180)
     assert "<path" in out.read_text(encoding="utf-8")
-print("Packaged GUI, Office/PDF, image and vector SVG smoke checks passed.")
+from formix.engine_update import remove_engine
+for component in ("libvips", "libreoffice"):
+    with patch("formix.engine_update.cache_folder", isolated_cache):
+        remove_engine(component)
+    assert optional_engine_missing(component)
+    assert ensure(component) == {"optional_missing": True}
+print("Packaged GUI, optional engine download/removal, Office/PDF, image and vector SVG smoke checks passed.")
+logging.shutdown()
+profile.cleanup()

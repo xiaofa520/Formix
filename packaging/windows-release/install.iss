@@ -48,7 +48,7 @@ zh_TW.StartMenuTask=新增至開始功能表
 Name: "startmenu"; Description: "{cm:StartMenuTask}"; Flags: unchecked
 [Files]
 Source: "Formix.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Formix\*"; DestDir: "{app}"; Excludes: "runtime\Formix.exe,runtime\格式转换通.exe,logs\*,cache\*,output\*,models\*,formix\__pycache__\*,*.obj"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "Formix\*"; DestDir: "{app}"; Excludes: "\runtime\Formix.exe,\runtime\格式转换通.exe,\logs\*,\cache\*,\output\*,\models\*,\formix\__pycache__\*"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "Formix\runtime\Formix.exe"; DestDir: "{app}\runtime"; DestName: "格式转换通.exe"; Languages: zh_CN; Flags: ignoreversion
 Source: "Formix\runtime\Formix.exe"; DestDir: "{app}\runtime"; DestName: "Formix.exe"; Languages: en zh_TW ja ko ru fr; Flags: ignoreversion
 Source: "vc_redist.{#BuildArch}.exe"; DestDir: "{tmp}"; DestName: "vc_redist.{#BuildArch}.exe"; Flags: deleteafterinstall

@@ -8,12 +8,12 @@ from PySide6.QtGui import QIcon, QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QProgressBar, QPushButton,
                                QTextBrowser, QVBoxLayout, QWidget)
 if __package__:
-    from .runtime_paths import ROOT, SYSTEM, script_path
+    from .runtime_paths import ROOT, SYSTEM, script_path, downloaded_engine_present
     from .background_work import open_folder_async
     from .button_input import connect_action
     from .engine_update import bundled_versions, active_engine
 else:
-    from runtime_paths import ROOT, SYSTEM, script_path
+    from runtime_paths import ROOT, SYSTEM, script_path, downloaded_engine_present
     from background_work import open_folder_async
     from button_input import connect_action
     from engine_update import bundled_versions, active_engine
@@ -132,7 +132,7 @@ class UpdateRow(QWidget):
         status_layout = QVBoxLayout()
         status_layout.addWidget(self.note)
         layout.addLayout(status_layout,1)
-        self.button=self.language.bind(QPushButton(),"check_engine")
+        self.button=QPushButton()
         self.button.setObjectName("secondary")
         self.button.setProperty("glyph", "refresh-cw.svg")
         self.button.setIcon(QIcon(str(Path(__file__).with_name("assets")/"icons"/"refresh-cw.svg")))
@@ -140,6 +140,14 @@ class UpdateRow(QWidget):
         self.button.setMinimumHeight(40)
         layout.addWidget(self.button)
         connect_action(self.button, self.check)
+        self.remove_button = QPushButton()
+        self.remove_button.setObjectName("secondary")
+        self.remove_button.setProperty("glyph", "trash-2.svg")
+        self.remove_button.setMinimumHeight(40)
+        self.remove_button.setVisible(component != "app")
+        layout.addWidget(self.remove_button)
+        connect_action(self.remove_button, self.remove_engine)
+        self.removing = False
         self.process=QProcess(self)
         self.process.readyReadStandardError.connect(self.read_messages)
         self.process.finished.connect(self.finished)
@@ -152,6 +160,8 @@ class UpdateRow(QWidget):
             self.set_note("installed_version", version=active[0])
         elif local := bundled_versions().get(component):
             self.set_note("bundled_engine_version", version=local)
+        elif component != "app":
+            self.set_note("engine_not_downloaded")
 
     def set_note(self,key,**values):
         self.note_state=(key,values)
@@ -160,22 +170,55 @@ class UpdateRow(QWidget):
             self.dialog.status.setText(self.note.text())
 
     def retranslate(self,*_):
+        if __package__:
+            from .runtime_paths import optional_engine_missing
+        else:
+            from runtime_paths import optional_engine_missing
+        self.button.setText(self.language.t("runtime_download" if optional_engine_missing(self.component) else "check_engine"))
+        self.remove_button.setText(self.language.t("remove_engine"))
+        self.remove_button.setEnabled(downloaded_engine_present(self.component)
+                                      and self.process.state() == QProcess.ProcessState.NotRunning)
         self.project_link.setToolTip(self.language.t("visit_project_website", name=self.project_link.text()))
         if self.note_state:
             key,values=self.note_state
             self.note.setText(self.language.t(key,**values))
+
+    def remove_engine(self):
+        tasks = getattr(self.window(), "tasks", None)
+        if (self.dialog or self.process.state() != QProcess.ProcessState.NotRunning
+                or getattr(self.window(), "task_busy", False)
+                or (tasks and self.component in tasks.checking_engines)):
+            self.set_note("engine_busy")
+            return
+        if not downloaded_engine_present(self.component):
+            return
+        self.removing = True
+        if tasks:
+            tasks.checking_engines.add(self.component)
+        self.run(["remove", self.component])
+
+    def finish_removal(self):
+        self.removing = False
+        tasks = getattr(self.window(), "tasks", None)
+        if tasks:
+            tasks.checking_engines.discard(self.component)
+            tasks.next_job()
+        self.retranslate()
 
     def failed_start(self, error):
         if error == QProcess.ProcessError.FailedToStart:
             self.note_state=None
             self.note.setText(self.process.errorString())
             self.button.setEnabled(True)
+            if self.removing:
+                self.finish_removal()
             if self.downloading and self.component != "app":
                 self.install_failed(self.process.errorString())
             self.check_failed()
 
     def run(self,args):
         self.button.setEnabled(False)
+        self.remove_button.setEnabled(False)
         self.stderr_tail = b""
         self.error_text = ""
         script=script_path("engine_update.py")
@@ -234,6 +277,16 @@ class UpdateRow(QWidget):
             return
         self.button.setEnabled(True)
         self.read_messages(final=True)
+        if self.removing:
+            self.finish_removal()
+            if code:
+                self.set_note("runtime_failed", reason=self.error_text)
+            elif local := bundled_versions().get(self.component):
+                self.set_note("bundled_engine_version", version=local)
+            else:
+                self.set_note("engine_not_downloaded")
+            return
+        self.retranslate()
         if code:
             self.note_state=None
             error=self.error_text
@@ -256,6 +309,7 @@ class UpdateRow(QWidget):
                 self.end_progress()
                 self.set_note("installed_version", version=data["version"])
                 self.installed.emit()
+                self.retranslate()
                 if self.dialog:
                     self.dialog.versions.hide()
             if not self.dialog:

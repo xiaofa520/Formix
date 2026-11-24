@@ -107,6 +107,8 @@ def unpack_office(package, folder):
     binary = next(folder.rglob("program/soffice"))
     wrapper = binary.with_name("formix-office")
     bundled_libs = next((ROOT / "vendor/office").glob("**/formix-libs"), None)
+    if (ROOT / "vendor/office-runtime-libs").is_dir():
+        bundled_libs = ROOT / "vendor/office-runtime-libs"
     fallback = ':' + shlex.quote(str(bundled_libs)) if bundled_libs else ''
     wrapper.write_text('#!/bin/sh\ndir="$(dirname "$0")"\nexport SAL_USE_VCLPLUGIN=svp\n'
                        f'export LD_LIBRARY_PATH="$dir"{fallback}"${{LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}}"\n'

@@ -90,6 +90,12 @@ def repair(component):
 
 
 def ensure(component):
+    if __package__:
+        from .runtime_paths import optional_engine_missing
+    else:
+        from runtime_paths import optional_engine_missing
+    if optional_engine_missing(component):
+        return {"optional_missing": True}
     try:
         return check(component) or {}
     except Exception as error:

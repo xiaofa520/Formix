@@ -168,6 +168,10 @@ def get_engines():
                         "$s=Get-AuthenticodeSignature -LiteralPath $env:FORMIX_REDIST; "
                         "if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'Microsoft Corporation') { exit 1 }"],
                        check=True, env=environment)
+    # Linux extracts a small shared-library compatibility layer at staging time.
+    # Windows and macOS need no Office build-time payload.
+    if system != "Linux":
+        return
     major_minor = "26.8.2"
     if system == "Windows":
         arch = "aarch64" if machine == "ARM64" else "x86_64"

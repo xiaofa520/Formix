@@ -54,10 +54,14 @@ with tarfile.open(deps / "python-3.11.15.tar.gz", "r:gz") as archive:
 python = app / "python" / PYTHON_EXE
 site = app / "python" / ("Lib/site-packages" if SYSTEM == "Windows" else "lib/python3.11/site-packages")
 site.mkdir(parents=True, exist_ok=True)
+# Also honor the lean payload when reusing an older dependency cache.
+offline = ROOT / "build" / f"{SLUG}-offline.txt"
+offline.write_text("\n".join(line for line in (deps / "offline.txt").read_text(encoding="utf-8").splitlines()
+                             if not line.lower().startswith("pyvips-binary==")) + "\n", encoding="utf-8")
 if shutil.which("uv"):
-    run("uv", "pip", "install", "--python", python, "--no-index", "--find-links", deps / "wheels", "--require-hashes", "-r", deps / "offline.txt")
+    run("uv", "pip", "install", "--python", python, "--no-index", "--find-links", deps / "wheels", "--require-hashes", "-r", offline)
 else:
-    run(python, "-m", "pip", "install", "--no-index", "--find-links", deps / "wheels", "--require-hashes", "-r", deps / "offline.txt")
+    run(python, "-m", "pip", "install", "--no-index", "--find-links", deps / "wheels", "--require-hashes", "-r", offline)
 
 vendor = app / "vendor"
 vendor.mkdir()
@@ -81,23 +85,7 @@ if SYSTEM == "Windows":
     arch = SLUG.split("-")[1]
     redist = next(path for path in deps.glob("*.exe") if arch in path.name.lower())
     shutil.copy2(redist, ROOT / "build" / f"vc_redist.{arch}.exe")
-    msi = next(deps.glob("LibreOffice*.msi"))
-    office = vendor / "office"
-    office.mkdir()
-    sys.path.insert(0, str(ROOT / "src"))
-    from formix.office_msi import unpack
-    unpack(msi, office)
-elif SYSTEM == "Darwin":
-    dmg = next(deps.glob("LibreOffice*.dmg"))
-    mount = Path(tempfile.mkdtemp(dir=ROOT / "build", prefix="lo-mount-"))
-    try:
-        run("hdiutil", "attach", "-nobrowse", "-quiet", "-mountpoint", mount, dmg)
-        source = next(mount.glob("LibreOffice*.app"))
-        shutil.copytree(source, vendor / "LibreOffice.app", symlinks=True)
-    finally:
-        subprocess.run(["hdiutil", "detach", "-quiet", str(mount)], check=False)
-        shutil.rmtree(mount, ignore_errors=True)
-else:
+elif SYSTEM == "Linux":
     import tarfile as tf
     outer = next(deps.glob("LibreOffice*Linux*deb.tar.gz"))
     with tf.open(outer, "r:gz") as archive:
@@ -108,6 +96,9 @@ else:
         run("dpkg-deb", "-x", package, office)
     shutil.rmtree(vendor / "office-debs")
     run(sys.executable, ROOT / "packaging" / "linux_libs.py", office)
+    # Keep only the small host-library compatibility layer for later downloads.
+    shutil.copytree(next(office.rglob("formix-libs")), vendor / "office-runtime-libs")
+    shutil.rmtree(office)
 
 shutil.copy2(ROOT / "README.md", app / "README.md")
 if SYSTEM == "Windows":
@@ -117,5 +108,6 @@ if SYSTEM == "Windows":
                        cwd=scratch, check=True)
 shutil.copy2(write_versions(deps), app / "engine-versions.json")
 (app / "release.txt").write_text(args.version, encoding="ascii")
-run(python, "-c", "import torch,torchvision,transformers,pyvips,pdfplumber,pypdfium2,docx,openpyxl;from PySide6 import QtWidgets;from transformers import AutoModelForImageTextToText, AutoProcessor, GlmOcrForConditionalGeneration, AutoModelForCausalLM")
+run(python, "-c", "import torch,torchvision,transformers,pdfplumber,pypdfium2,docx,openpyxl;from PySide6 import QtWidgets;from transformers import AutoModelForImageTextToText, AutoProcessor, GlmOcrForConditionalGeneration, AutoModelForCausalLM")
+run(sys.executable, ROOT / "packaging/payload_integrity.py", "write", app)
 print(f"Prepared {app} for {SLUG}")

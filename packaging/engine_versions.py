@@ -20,9 +20,7 @@ def write_versions(folder):
         with zipfile.ZipFile(folder / "wheels" / filename) as archive:
             member = next(n for n in archive.namelist() if "/binaries/ffmpeg-" in n)
             ff_version = re.search(r"-v([\d.]+?)(?:\.exe)?$", member)[1]
-    office = next(p for p in sorted(folder.glob("LibreOffice*")) if p.suffix in {".msi", ".dmg", ".gz"})
-    office_version = re.search(r"LibreOffice[_-](\d+(?:\.\d+)+)", office.name)[1]
-    versions = {"ffmpeg": ff_version, "libvips": packages["pyvips-binary"]["version"], "libreoffice": office_version}
+    versions = {"ffmpeg": ff_version}
     target = folder / "engine-versions.json"
     target.write_text(json.dumps(versions, indent=2) + "\n", encoding="utf-8")
     return target

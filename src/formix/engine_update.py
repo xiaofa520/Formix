@@ -1,4 +1,5 @@
 import hashlib
+import shutil
 import json
 import errno
 import io
@@ -220,6 +221,45 @@ def update_engine(component, version, progress):
         lock.unlock()
 
 
+def remove_engine(component):
+    """Remove only separately downloaded engines, never bundled files or models."""
+    from PySide6.QtCore import QLockFile
+    if __package__:
+        from .background_work import remove_tree
+    else:
+        from background_work import remove_tree
+    if component not in {"ffmpeg", "libvips", "libreoffice"}:
+        raise ValueError("Unknown conversion engine")
+    base = engine_store().resolve()
+    folder = base / component
+    if folder.is_symlink() or folder.resolve().parent != base:
+        raise ValueError("Invalid engine directory")
+    if not folder.exists():
+        return {"removed": component}
+    lock = QLockFile(str(folder / "update.lock"))
+    lock.setStaleLockTime(0)
+    if not lock.tryLock(0):
+        raise RuntimeError("Another engine update is in progress")
+    try:
+        (folder / "active.json").unlink(missing_ok=True)
+        for child in folder.iterdir():
+            if child.name == "update.lock":
+                continue
+            if child.is_symlink() or child.is_file():
+                child.unlink()
+            else:
+                remove_tree(child)
+        cache_base = cache_folder("engines", SLUG).resolve()
+        cached = cache_base / component
+        if cached.is_symlink() or cached.resolve().parent != cache_base:
+            raise ValueError("Invalid engine cache directory")
+        if cached.exists():
+            remove_tree(cached)
+    finally:
+        lock.unlock()
+    return {"removed": component}
+
+
 def latest_release():
     request = urllib.request.Request(FEED, headers={"User-Agent":"Formix-engine-updater"})
     with urllib.request.urlopen(request, timeout=20) as response:
@@ -280,6 +320,8 @@ if __name__ == "__main__":
                     result["unavailable"] = True
         elif len(sys.argv) == 3 and sys.argv[1] == "check":
             result = check_engine(sys.argv[2])
+        elif len(sys.argv) == 3 and sys.argv[1] == "remove":
+            result = remove_engine(sys.argv[2])
         elif len(sys.argv) == 4 and sys.argv[1] == "download":
             def progress(phase, percent=None):
                 print("FORMIX_UPDATE " + json.dumps([phase, percent]), file=sys.stderr, flush=True)

@@ -39,6 +39,15 @@ def write_control(path, command):
     temporary.replace(path)
 
 
+def check_installed_dependencies(system, installed, evidence, phase):
+    interpreter = installed / ('runtime/Formix.exe' if system == 'Windows' else 'python/bin/python3.11')
+    with (evidence / (phase + '-dependencies.log')).open('w') as output:
+        subprocess.run([str(interpreter), '-I', str(ROOT / 'packaging/check_installed_runtime.py'),
+                        str(interpreter)], check=True, stdout=output, stderr=subprocess.STDOUT, timeout=240)
+    from payload_integrity import verify
+    verify(installed)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('version')
@@ -81,6 +90,7 @@ def main():
                     subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, check=False)
             print((evidence / 'initial-install.log').read_text(), flush=True)
         raise RuntimeError('Installer returned success but required files are missing: ' + ', '.join(missing))
+    check_installed_dependencies(system, installed, evidence, 'initial')
     # Construct an older on-disk state using this release's real installer.
     # This tests installation/replacement, not compatibility with historical releases.
     if system == 'Darwin':
@@ -98,6 +108,7 @@ def main():
             after = wait_report(after_path, control=control, process=process)
             assert after['pid'] != before['pid'], 'Old application was not replaced and restarted'
             assert after['version'] == args.version, after
+            check_installed_dependencies(system, installed, evidence, 'updated')
             for key in ('root', 'setting', 'model', 'model_hash'):
                 assert before[key] == after[key], f'{key} was not preserved: {before} -> {after}'
             assert Path(after['root']).resolve() == installed.resolve(), 'Installation location changed'

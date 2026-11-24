@@ -933,6 +933,8 @@ class ToolPage(QWidget):
             diagnostic_event('output_directory_selected', page=self.name, path=folder)
 
     def enqueue(self):
+        if self.window.prompt_page_engine(self.name):
+            return
         files = self.files.pending_sources()
         audio = self.audio.text().strip() if self.audio else ""
         if self.name == "音视频合并" and not Path(audio).is_file():
@@ -2045,6 +2047,19 @@ class Window(QMainWindow):
             self.notes_open_timer.start()
         else:
             self.notes_open_timer.stop()
+            if index < len(self.pages):
+                self.prompt_page_engine(self.pages[index].name)
+
+    def prompt_page_engine(self, name):
+        if __package__:
+            from .runtime_paths import optional_engine_missing
+        else:
+            from runtime_paths import optional_engine_missing
+        component = {"图片转换": "libvips", "图片压缩": "libvips", "文档转换": "libreoffice"}.get(name)
+        if component and optional_engine_missing(component):
+            self.prompt_runtime(component)
+            return True
+        return False
 
     @staticmethod
     def platform_name():
@@ -2074,6 +2089,22 @@ class Window(QMainWindow):
         return self.language.t(key, **values)
 
     def prompt_runtime(self, dependency):
+        component = {"office": "libreoffice", "libreoffice": "libreoffice", "libvips": "libvips"}.get(dependency)
+        if component:
+            box = QMessageBox(self)
+            box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            box.setWindowTitle(self.t("runtime_title"))
+            box.setText(self.t("optional_engine_prompt", name={"libvips": "libvips", "libreoffice": "LibreOffice"}[component]))
+            download = box.addButton(self.t("page_settings"), QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(self.t("update_later"), QMessageBox.ButtonRole.RejectRole)
+            def open_settings(button):
+                if button == download:
+                    self.page_buttons.button(self.settings_index).click()
+                    row = next(r for r in self.update_rows if r.component == component)
+                    self.settings_scroll.ensureWidgetVisible(row, 0, 90)
+            box.buttonClicked.connect(open_settings)
+            box.open()
+            return
         names = {"vc": "Microsoft Visual C++ Redistributable", "office": "LibreOffice",
                  "ffmpeg": "FFmpeg", "repair": "Formix"}
         box = QMessageBox(self)

@@ -39,7 +39,7 @@ zh_TW.StartMenuTask=新增至開始功能表
 [Tasks]
 Name: "startmenu"; Description: "{cm:StartMenuTask}"; Flags: unchecked
 [Files]
-Source: "build\windows-{#BuildArch}-app\*"; DestDir: "{app}"; Excludes: "logs\*,cache\*,output\*,models\*,formix\__pycache__\*,*.obj"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "build\windows-{#BuildArch}-app\*"; DestDir: "{app}"; Excludes: "\logs\*,\cache\*,\output\*,\models\*,\formix\__pycache__\*"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "build\vc_redist.{#BuildArch}.exe"; DestDir: "{tmp}"; DestName: "vc_redist.{#BuildArch}.exe"; Flags: deleteafterinstall
 [Icons]
 Name: "{commondesktop}\{cm:AppTitle}"; Filename: "{app}\python\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\formix\assets\logo.ico"

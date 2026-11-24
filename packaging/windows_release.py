@@ -59,6 +59,7 @@ def main():
     environment = os.environ.copy()
     environment['QT_QPA_PLATFORM'] = 'offscreen'
     run(runtime / 'Formix.exe', '-I', root / 'packaging/smoke.py', app, env=environment)
+    run(sys.executable, root / 'packaging/payload_integrity.py', 'write', app)
     shutil.copy2(root / 'build/vc_redist.x64.exe', work / 'vc_redist.x64.exe')
     compiler = shutil.which('ISCC') or str(Path(os.environ['ProgramFiles(x86)']) / 'Inno Setup 6/ISCC.exe')
     run(compiler, f'/DVersion={args.version}', '/DBuildArch=x64', f'/O{root / "dist"}', work / 'install.iss')

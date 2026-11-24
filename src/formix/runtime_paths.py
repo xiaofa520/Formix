@@ -69,6 +69,9 @@ def group_windows_processes():
 
 def missing_runtime(error, exit_code):
     detail = error.strip()
+    for component in ("libvips", "libreoffice"):
+        if f"Optional engine not installed: {component}" in detail:
+            return component
     if SYSTEM == "Windows":
         import re
         dlls = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
@@ -152,7 +155,32 @@ def ncm_cache_dir():
         return fallback
 
 
+def downloaded_engine_present(component):
+    if component not in {"ffmpeg", "libvips", "libreoffice"}:
+        return False
+    folder = engine_store() / component
+    try:
+        return any(child.name != "update.lock" for child in folder.iterdir())
+    except OSError:
+        return False
+
+
+def optional_engine_missing(component):
+    """Only explicitly omitted release engines require a user-initiated download."""
+    if component not in {"libvips", "libreoffice"} or not (ROOT / "release.txt").is_file():
+        return False
+    if active_engine(component):
+        return False
+    try:
+        versions = json.loads((ROOT / "engine-versions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return component not in versions
+
+
 def load_vips(directory=None):
+    if directory is None and optional_engine_missing("libvips"):
+        raise RuntimeError("Optional engine not installed: libvips")
     use_worker_modules("libvips")
     if directory is None:
         active = active_engine("libvips")
@@ -170,6 +198,8 @@ def load_vips(directory=None):
 
 
 def executable(name):
+    if name == "soffice" and optional_engine_missing("libreoffice"):
+        raise RuntimeError("Optional engine not installed: libreoffice")
     active = active_engine("ffmpeg" if name == "ffmpeg" else "libreoffice")
     if active:
         return str(active[1])

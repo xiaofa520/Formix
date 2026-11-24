@@ -104,6 +104,8 @@ def main():
     output.chmod(0o755)
     run(output, '--appimage-extract', cwd=work)
     extracted = work / 'squashfs-root/usr/lib/formix'
+    from payload_integrity import verify
+    verify(extracted)
     run(extracted / 'python/bin/python3.11', root / 'packaging/smoke.py', extracted,
         env={**environment, 'QT_QPA_PLATFORM': 'offscreen'})
 

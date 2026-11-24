@@ -49,6 +49,9 @@ def materialize_wheel(package, archive, wheels):
 def write_offline_requirements(packages, folder):
     lines = []
     for package in packages:
+        # The lightweight Python wrapper stays; the native image engine is optional.
+        if canonicalize_name(package['name']) == 'pyvips-binary':
+            continue
         if not package.get("wheels") and not package.get("archive"):
             raise ValueError(f"Build source package before offline staging: {package['name']}")
         spec = package_artifact(package)
