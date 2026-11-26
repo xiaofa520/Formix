@@ -258,7 +258,7 @@ class UpdateRow(QWidget):
         self.set_note("engine_kept", reason=reason)
 
     def check_on_startup(self):
-        return self.language.settings.value(self.startup_key, False, type=bool)
+        return self.language.settings.value(self.startup_key, self.component == "app", type=bool)
 
     def check(self, startup=False):
         if self.process.state() != QProcess.ProcessState.NotRunning or self.dialog:

@@ -44,7 +44,8 @@ d.shutdown()
 ''', folder)
             self.assertEqual(result.returncode, 0, result.stderr)
             files = list(Path(folder).glob('*.log*'))
-            self.assertEqual(len(files), 4)
+            self.assertEqual(len(files), 1)
+            self.assertLess(files[0].stat().st_size, 1500)
             self.assertIn('application_stop', next(Path(folder).glob('*.log')).read_text('utf-8'))
 
     def test_unwritable_log_directory_does_not_crash(self):

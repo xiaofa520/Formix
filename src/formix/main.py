@@ -1469,9 +1469,7 @@ class Window(QMainWindow):
         now = QDateTime.currentDateTime()
         today = now.date().toString(Qt.DateFormat.ISODate)
         saved_day = settings.value("updates/appAutoCheck/day", "", type=str)
-        count = settings.value("updates/appAutoCheck/count", 0, type=int) if saved_day == today else 0
-        last = settings.value("updates/appAutoCheck/last", 0, type=int)
-        return count < 5 and now.toSecsSinceEpoch() - last >= 3600
+        return saved_day != today and self.app_update_row.check_on_startup()
 
     def record_auto_app_check(self):
         if not self.can_auto_check_app_update():
