@@ -39,13 +39,10 @@ Name: "ru"; MessagesFile: "compiler:Languages/Russian.isl"
 Name: "fr"; MessagesFile: "compiler:Languages/French.isl"
 [CustomMessages]
 AppTitle=Formix
-StartMenuTask=Add a shortcut to the Start menu
 zh_CN.AppTitle=格式转换通
-zh_CN.StartMenuTask=添加到开始菜单
 zh_TW.AppTitle=格式转换通
-zh_TW.StartMenuTask=新增至開始功能表
 [Tasks]
-Name: "startmenu"; Description: "{cm:StartMenuTask}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"
 [Files]
 Source: "Formix.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Formix\*"; DestDir: "{app}"; Excludes: "\runtime\Formix.exe,\runtime\格式转换通.exe,\logs\*,\cache\*,\output\*,\models\*,\formix\__pycache__\*"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -59,8 +56,10 @@ Type: files; Name: "{app}\main.py"
 Type: files; Name: "{app}\formix\*.py"
 Type: filesandordirs; Name: "{app}\python"
 [Icons]
-Name: "{commondesktop}\{cm:AppTitle}"; Filename: "{app}\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\Formix.exe"
-Name: "{commonprograms}\{cm:AppTitle}"; Tasks: startmenu; Filename: "{app}\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\Formix.exe"
+Name: "{commondesktop}\{cm:AppTitle}"; Tasks: desktopicon; Filename: "{app}\Formix.exe"; WorkingDir: "{app}"; IconFilename: "{app}\Formix.exe"
+
+[Run]
+Filename: "{app}\Formix.exe"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{cm:AppTitle}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function DefaultInstallDir(Param: String): String;

@@ -54,6 +54,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python packaging/windows_release.py "$env:VERSION"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise all four Windows installer checkbox combinations
+        if: runner.os == 'Windows'
+        shell: bash
+        timeout-minutes: 55
+        run: |
+          python -m pip install pywinauto psutil pywin32
+          python packaging/test_windows_wizard.py "$VERSION"
       - name: Install Linux GUI runtime dependencies
         if: runner.os == 'Linux'
         run: |
