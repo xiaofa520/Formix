@@ -37,6 +37,30 @@ def attach(app, window, root, version):
                          model_hash=hashlib.sha256(model.read_bytes()).hexdigest() if model.is_file() else None,
                          visible=window.isVisible(), exposed=window.windowHandle().isExposed())
             destination = Path(command['report'])
+            if command['phase'] == 'verify':
+                from PySide6.QtTest import QTest
+                from PySide6.QtWidgets import QMessageBox
+                folder = destination.parent / (destination.stem + '-ui')
+                folder.mkdir(exist_ok=True)
+                for index in range(window.stack.count()):
+                    if index < len(window.pages):
+                        page = window.pages[index]
+                        name = page.name
+                        window.category_buttons.button(window.page_categories[page]).click()
+                    else:
+                        name = '设置'
+                    window.page_buttons.button(index).click()
+                    QTest.qWait(350)
+                    for dialog in window.findChildren(QMessageBox):
+                        if dialog.isVisible():
+                            dialog.reject()
+                    app.processEvents()
+                    path = folder / f'{index + 1:02d}-{name}.png'
+                    if window.stack.currentIndex() != index or not window.grab().save(str(path), 'PNG'):
+                        raise RuntimeError(f'Could not capture page: {path}')
+            screenshot = destination.with_suffix('.png')
+            if not window.grab().save(str(screenshot), 'PNG'):
+                raise RuntimeError(f'Could not save window screenshot: {screenshot}')
             temporary = destination.with_suffix('.tmp')
             temporary.write_text(json.dumps(state), encoding='utf-8')
             temporary.replace(destination)

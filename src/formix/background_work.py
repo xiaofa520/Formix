@@ -58,6 +58,10 @@ def run_background(function, callback=None):
 
 def remove_tree(path):
     path = Path(path)
+    if os.name == "nt":
+        absolute = str(path.absolute())
+        if not absolute.startswith("\\\\?\\"):
+            path = Path("\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute)
 
     def writable_retry(function, filename, info):
         error = info[1]
@@ -77,8 +81,8 @@ def remove_tree(path):
             if not path.exists():
                 return
             raise
-        except PermissionError:
-            if attempt == 10:
+        except OSError as error:
+            if (not isinstance(error, PermissionError) and getattr(error, "winerror", None) != 145) or attempt == 10:
                 raise
             # Office and antivirus processes can briefly retain file handles.
             time.sleep(min(1, .05 * 2**attempt))

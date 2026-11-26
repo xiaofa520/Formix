@@ -153,8 +153,15 @@ def install(component, version, package):
     try:
         entry = (unpack_office(package, candidate) if component == "libreoffice"
                  else unpack_wheel(package, candidate, component))
-        with tempfile.TemporaryDirectory(dir=folder) as tmp:
-            probe(component, entry, version, Path(tmp))
+        if __package__:
+            from .background_work import remove_tree
+        else:
+            from background_work import remove_tree
+        scratch = Path(tempfile.mkdtemp(prefix="probe-", dir=folder))
+        try:
+            probe(component, entry, version, scratch)
+        finally:
+            remove_tree(scratch)
         receipt = candidate / "active.tmp"
         receipt.write_text(json.dumps({"version": version, "entry": entry.relative_to(folder).as_posix()}),
                            encoding="utf-8")
