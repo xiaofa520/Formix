@@ -12,3 +12,4 @@ openpyxl>=3.1
 packaging>=24
 mutagen>=1.47
 pycryptodome>=3.21
+certifi

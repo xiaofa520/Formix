@@ -1,3 +1,4 @@
+import ssl
 import hashlib
 import shutil
 import json
@@ -54,7 +55,11 @@ def cache_folder(*parts):
 
 
 def request(url, **headers):
-    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Formix-updater", **headers}), timeout=60)
+    import certifi
+    context = ssl.create_default_context()
+    context.load_verify_locations(cafile=certifi.where())
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Formix-updater", **headers}),
+                                  timeout=60, context=context)
 
 
 def wheel_release(component):
@@ -101,6 +106,7 @@ def office_release():
     if file is None or file.get("name") != name:
         raise ValueError("Unexpected LibreOffice release metadata")
     return dict(version=version, name=name, url=url, size=int(file.findtext("{*}size")),
+                mirrors=[node.text for node in file.findall("{*}url") if (node.text or "").startswith("https://")],
                 sha256=file.findtext("{*}hash[@type='sha-256']"))
 
 
@@ -182,7 +188,15 @@ def fetch_engine(component, version, progress):
             received = 0
             last = -1
             progress("download", 0)
-            with request(asset["url"]) as response, partial.open("wb") as output:
+            urls = list(dict.fromkeys([asset["url"], *asset.get("mirrors", [])]))[:6]
+            for index, url in enumerate(urls):
+                try:
+                    response = request(url)
+                    break
+                except urllib.error.URLError:
+                    if index + 1 == len(urls):
+                        raise
+            with response, partial.open("wb") as output:
                 while chunk := response.read(1024 * 1024):
                     output.write(chunk)
                     received += len(chunk)
