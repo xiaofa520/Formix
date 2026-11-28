@@ -142,7 +142,7 @@ class UpdateRow(QWidget):
         connect_action(self.button, self.check)
         self.remove_button = QPushButton()
         self.remove_button.setObjectName("secondary")
-        self.remove_button.setProperty("glyph", "trash-2.svg")
+        self.remove_button.setProperty("glyph", "trash.svg")
         self.remove_button.setMinimumHeight(40)
         self.remove_button.setVisible(component != "app")
         layout.addWidget(self.remove_button)

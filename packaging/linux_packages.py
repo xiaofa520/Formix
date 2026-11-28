@@ -23,6 +23,17 @@ def write(path, content, executable=False):
         path.chmod(0o755)
 
 
+def prepare_portable_tree(portable):
+    from payload_integrity import write as write_inventory
+    # Staging uses hard links. Replace the directory entry before copying.
+    (portable / 'README.md').unlink()
+    shutil.copy2(Path(__file__).with_name('linux-portable-guide.md'), portable / 'README.md')
+    if (portable / 'logs').is_dir():
+        shutil.rmtree(portable / 'logs')
+    (portable / 'payload-manifest.json').unlink()
+    write_inventory(portable)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('app', type=Path)
@@ -113,8 +124,7 @@ def main():
     with tempfile.TemporaryDirectory(dir=work) as stage:
         portable = Path(stage) / app.name
         run('cp', '-RL', '--link', app, portable)
-        (portable / 'payload-manifest.json').unlink()
-        write_inventory(portable)
+        prepare_portable_tree(portable)
         archive = dist / f'formix-linux-{label}-v{args.version}.tar.gz'
         run('tar', '--hard-dereference', '-C', stage, '-czf', archive, app.name)
 

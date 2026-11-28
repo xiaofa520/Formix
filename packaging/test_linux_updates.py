@@ -141,8 +141,12 @@ def main():
             with tarfile.open(archive) as bundle:
                 bundle.extractall(folder, filter='data')
             installed, = folder.iterdir()
+            guide = (ROOT / 'packaging/linux-portable-guide.md').read_bytes()
+            assert (installed / 'README.md').read_bytes() == guide
+            assert not (installed / 'logs').exists(), 'Build logs shipped in portable package'
             (installed / 'release.txt').write_text('0.0.0')
             exercise(args.kind, installed / 'Formix', installed, archive, env, evidence, args.version)
+            assert (installed / 'README.md').read_bytes() == guide
             return
         if args.kind == 'deb':
             deb = next(dist.glob('*.deb'))

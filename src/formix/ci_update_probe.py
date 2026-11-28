@@ -13,6 +13,10 @@ def capture_settings(window, folder):
 
     scroll = window.settings_scroll
     bar = scroll.verticalScrollBar()
+    for _ in range(180):
+        if window.hardware_info is not None:
+            break
+        QTest.qWait(100)
     bar.setValue(0)
     section = 1
     while bar.value() < bar.maximum():
@@ -24,8 +28,8 @@ def capture_settings(window, folder):
 
     for name, combo in [('models', window.model_combo), ('language', window.language_combo),
                         ('acceleration', window.video_acceleration_combo)]:
-        scroll.ensureWidgetVisible(combo)
-        QTest.qWait(180)
+        scroll.ensureWidgetVisible(combo, 0, 130)
+        QTest.qWait(300)
         QTest.mouseClick(combo, Qt.MouseButton.LeftButton)
         QTest.qWait(200)
         view = combo.view()

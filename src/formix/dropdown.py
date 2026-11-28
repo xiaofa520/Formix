@@ -147,6 +147,10 @@ class Dropdown(QComboBox):
         anchor = self.mapToGlobal(QPoint(0, self.height() + 3))
         screen = self.screen().availableGeometry()
         room = screen.bottom() - anchor.y() + 1
+        above = self.mapToGlobal(QPoint(0, 0)).y() - screen.top() - 3
+        open_above = room < 80 and above > room
+        if open_above:
+            room = above
         if room <= 0:
             return
         super().showPopup()
@@ -156,6 +160,8 @@ class Dropdown(QComboBox):
             return
         self.last_open.start()
         height = min(room, 12 + sum(view.sizeHintForRow(i) for i in range(min(self.count(), self.maxVisibleItems()))))
+        if open_above:
+            anchor.setY(self.mapToGlobal(QPoint(0, 0)).y() - height - 3)
         requested_width = self.property("popupWidth")
         try:
             requested_width = max(self.width(), int(requested_width)) if requested_width else 0
