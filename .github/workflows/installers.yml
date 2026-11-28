@@ -82,7 +82,8 @@ jobs:
           python3 packaging/stage.py "$VERSION"
           QT_QPA_PLATFORM=offscreen "$app/python/bin/python3.11" packaging/smoke.py "$app"
           bash packaging/unix.sh "$VERSION"
-      - name: Stage and check Linux bundle
+      - id: linux_bundle
+        name: Stage and check Linux bundle
         if: runner.os == 'Linux'
         run: |
           app="build/linux-$(python3 -c 'import platform; print("arm64" if platform.machine() in {"arm64", "aarch64"} else "x64")')-app"
@@ -90,10 +91,30 @@ jobs:
           QT_QPA_PLATFORM=offscreen "$app/python/bin/python3.11" packaging/smoke.py "$app"
           xvfb-run -a env QT_QPA_PLATFORM=xcb "$app/python/bin/python3.11" -c "from PySide6.QtWidgets import QApplication,QWidget; a=QApplication([]); w=QWidget(); w.show(); a.processEvents(); w.close()"
           bash packaging/unix.sh "$VERSION"
-      - name: Install, upgrade and reopen Linux packages
-        if: runner.os == 'Linux'
+      - name: Install, upgrade and reopen Linux deb
+        if: always() && steps.linux_bundle.outcome == 'success' && !cancelled()
         timeout-minutes: 35
-        run: sudo -E xvfb-run -a "$(command -v python)" packaging/test_linux_updates.py "$VERSION"
+        shell: bash
+        run: |
+          logs="build/linux-update-test-logs/deb/logs"
+          mkdir -p "$logs"
+          sudo -E xvfb-run -a "$(command -v python)" packaging/test_linux_updates.py "$VERSION" deb 2>&1 | tee "$logs/integration.log"
+      - name: Install, upgrade and reopen Linux appimage
+        if: always() && steps.linux_bundle.outcome == 'success' && !cancelled()
+        timeout-minutes: 35
+        shell: bash
+        run: |
+          logs="build/linux-update-test-logs/appimage/logs"
+          mkdir -p "$logs"
+          sudo -E xvfb-run -a "$(command -v python)" packaging/test_linux_updates.py "$VERSION" appimage 2>&1 | tee "$logs/integration.log"
+      - name: Install, upgrade and reopen Linux tar.gz
+        if: always() && steps.linux_bundle.outcome == 'success' && !cancelled()
+        timeout-minutes: 35
+        shell: bash
+        run: |
+          logs="build/linux-update-test-logs/tar.gz/logs"
+          mkdir -p "$logs"
+          sudo -E xvfb-run -a "$(command -v python)" packaging/test_linux_updates.py "$VERSION" tar.gz 2>&1 | tee "$logs/integration.log"
       - name: Install, update and reopen Windows and macOS applications
         if: runner.os != 'Linux'
         timeout-minutes: 25
@@ -124,9 +145,53 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
           compression-level: 0
+  ubuntu-compatibility:
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [appimage, deb, tar.gz]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Formix-ubuntu-22.04
+          path: dist
+      - name: Launch released package as desktop user
+        shell: bash
+        env:
+          FORMAT: ${{ matrix.format }}
+        run: |
+          folder="build/linux-update-test-logs/$FORMAT"
+          mkdir -p "$folder/logs" "$folder/reports"
+          exec > >(tee "$folder/logs/compatibility.log") 2>&1
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libfuse2t64
+          case "$FORMAT" in
+            deb) sudo apt-get install -y "$PWD"/dist/*.deb; app=/usr/bin/formix ;;
+            appimage)
+              app=$(realpath dist/*.AppImage)
+              chmod +x "$app"
+              if [[ ! -r /dev/fuse || ! -w /dev/fuse ]]; then export APPIMAGE_EXTRACT_AND_RUN=1; fi ;;
+            tar.gz)
+              mkdir -p "$RUNNER_TEMP/Portable Formix"
+              tar -xf dist/*.tar.gz -C "$RUNNER_TEMP/Portable Formix"
+              app=$(realpath "$RUNNER_TEMP/Portable Formix"/*/Formix) ;;
+          esac
+          export FORMIX_CI_CONTROL="$PWD/$folder/reports/control.json"
+          python3 -c 'import json,os,pathlib; p=pathlib.Path(os.environ["FORMIX_CI_CONTROL"]); p.write_text(json.dumps(dict(phase="verify",report=str(p.parent/"launch.json"),screenshots=str(p.parents[1]/"screenshots"),close=True)))'
+          cd "$RUNNER_TEMP"
+          timeout 180 xvfb-run -a env QT_QPA_PLATFORM=xcb "$app"
+          python3 -c 'import json,os,pathlib; p=pathlib.Path(os.environ["FORMIX_CI_CONTROL"]); r=json.loads((p.parent/"launch.json").read_text()); assert r["visible"] and r["exposed"]'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Ubuntu-24.04-${{ matrix.format }}-launch
+          path: build/linux-update-test-logs/
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, ubuntu-compatibility]
     runs-on: ubuntu-22.04
     permissions:
       contents: write

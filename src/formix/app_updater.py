@@ -16,7 +16,7 @@ import time
 
 
 MANAGED = ("Formix", "main.py", "formix", "python", "vendor", "release.txt",
-           "engine-versions.json", "README.md")
+           "engine-versions.json", "payload-manifest.json", "README.md")
 
 
 def log_path(platform_name):

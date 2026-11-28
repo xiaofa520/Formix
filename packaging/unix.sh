@@ -24,13 +24,25 @@ else
   app="build/linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x64/')-app"
   cat > "$app/Formix" <<'SCRIPT'
 #!/bin/sh
-root="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-export LD_LIBRARY_PATH="$root/python/lib:$root/python/lib/python3.11/site-packages/PySide6/Qt/lib:$root/vendor/office/usr/lib/libreoffice/program:$root/vendor/office/formix-libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export SAL_USE_VCLPLUGIN=svp
-exec "$root/python/bin/python3.11" -I "$root/main.py" "$@"
+set -eu
+case "$0" in */*) directory=${0%/*} ;; *) directory=. ;; esac
+root=$(CDPATH= cd -- "$directory" && pwd -P)
+if [ ! -t 2 ] && [ -z "${FORMIX_CI_CONTROL:-}" ]; then
+  logs="${XDG_STATE_HOME:-$HOME/.local/state}/Formix/logs"
+  if mkdir -p -- "$logs" && ( : >> "$logs/launcher.log" ); then
+    if [ -w "$logs" ] && [ -r "$logs/launcher.log" ] && [ "$(wc -c < "$logs/launcher.log")" -gt 5242880 ]; then
+      mv -f -- "$logs/launcher.log" "$logs/launcher.previous.log" || echo "Formix: could not rotate launcher.log" >&2
+    fi
+    exec 2>>"$logs/launcher.log"
+    printf '\nFormix startup: %s\n' "$root" >&2
+  fi
+fi
+if [ -d "$root/qt-xcb-libs" ]; then
+  export LD_LIBRARY_PATH="$root/qt-xcb-libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+exec "$root/python/bin/python3" -I -X faulthandler "$root/main.py" "$@"
 SCRIPT
   chmod +x "$app/Formix"
   python3 packaging/payload_integrity.py write "$app"
   python3 packaging/linux_packages.py "$app" "$version"
-  tar -C build -czf "dist/formix-linux-$(uname -m | sed 's/aarch64/arm64/;s/x86_64/64/')-v$version.tar.gz" "$(basename "$app")"
 fi

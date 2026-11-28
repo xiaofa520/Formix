@@ -2065,18 +2065,18 @@ class Window(QMainWindow):
         names = {"Windows": "Windows", "Darwin": "macOS", "Linux": "Linux"}
         return names.get(platform.system(), platform.system())
 
-    @staticmethod
-    def make_default_output_directory():
+    def make_default_output_directory(self):
+        folder = "格式转换通缓存" if self.language.code.startswith("zh") and not sys.platform.startswith("linux") else "Formix Output"
         if os.name == "nt" and Path("D:/").is_dir():
-            target = Path("D:/格式转换通缓存")
+            target = Path("D:/") / folder
         else:
             documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
-            target = Path(documents or Path.home()) / "格式转换通缓存"
+            target = Path(documents or Path.home()) / folder
         try:
             target.mkdir(parents=True, exist_ok=True)
         except OSError:
             documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
-            target = Path(documents or Path.home()) / "格式转换通缓存"
+            target = Path(documents or Path.home()) / folder
             try:
                 target.mkdir(parents=True, exist_ok=True)
             except OSError:
@@ -2240,7 +2240,8 @@ class Window(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(14)
 
-        language_card, language_layout = card(self.language, "language_title", "language_hint")
+        language_card, language_layout = card(self.language, "language_title",
+                                             None if sys.platform.startswith("linux") else "language_hint")
         language_row = QHBoxLayout()
         language_icon = QLabel()
         language_icon.setProperty("glyph", "globe.svg")

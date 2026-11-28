@@ -38,12 +38,15 @@ def stop(process):
 
 
 def exercise(kind, launcher, installed_root, archive, env, evidence, version):
-    from test_native_updates import wait_report, write_control
-    control = evidence / f'{kind}-control.json'
-    before_path, after_path = evidence / f'{kind}-before.json', evidence / f'{kind}-after.json'
+    from test_native_updates import evidence_dirs, wait_report, write_control
+    screenshots = {'screenshots': str(evidence / kind / 'screenshots')}
+    logs, reports = evidence_dirs(evidence, kind)
+    control = reports / 'control.json'
+    before_path, after_path = reports / 'before.json', reports / 'after.json'
     before_path.unlink(missing_ok=True)
     after_path.unlink(missing_ok=True)
     control.with_suffix('.error').unlink(missing_ok=True)
+    env = {**env, **{key: str(Path(env[key]) / kind) for key in ('XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME')}}
     environment = {**env, 'FORMIX_CI_CONTROL': str(control)}
     download = evidence.parent / f'{kind}-update-download'
     download.mkdir(exist_ok=True)
@@ -52,7 +55,7 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
     checks = {'verify_payload': str(ROOT / 'packaging/payload_integrity.py'),
               'verify_runtime': str(ROOT / 'packaging/check_installed_runtime.py')}
     write_control(control, {'phase': 'seed', 'report': str(before_path), **checks})
-    log = (evidence / f'{kind}.log').open('w')
+    log = (logs / 'application.log').open('w')
     old = subprocess.Popen([str(launcher)], env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     after = None
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(
@@ -63,7 +66,7 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
         before = wait_report(before_path, 600, control, old)
         assert before['version'] == '0.0.0', before
         assert before['setting'] == 'keep-this-setting' and before['model_hash']
-        write_control(control, {'phase': 'verify', 'report': str(after_path), **checks, 'download_asset': {
+        write_control(control, {'phase': 'verify', 'report': str(after_path), **checks, **screenshots, 'download_asset': {
             'name': package.name, 'version': version, 'size': package.stat().st_size,
             'digest': 'sha256:' + digest(package),
             'url': f'http://127.0.0.1:{server.server_port}/' + urllib.parse.quote(package.name)}})
@@ -72,7 +75,7 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
         assert after['version'] == version, after
         for key in ('setting', 'settings_file', 'model', 'model_hash'):
             assert before[key] == after[key], f'{kind}: {key} changed'
-        if kind == 'deb':
+        if kind != 'appimage':
             assert Path(after['root']).resolve() == installed_root.resolve()
         else:
             assert not Path(before['model']).is_relative_to(Path(before['root']))
@@ -94,28 +97,32 @@ def exercise(kind, launcher, installed_root, archive, env, evidence, version):
             except ProcessLookupError:
                 pass
         log.close()
-        print((evidence / f'{kind}.log').read_text(errors='replace')[-12000:], flush=True)
+        print((logs / 'application.log').read_text(errors='replace')[-12000:], flush=True)
         app_logs = Path(env['XDG_DATA_HOME']) / 'Formix/logs'
-        for path in app_logs.glob('*.log'):
-            shutil.copy2(path, evidence / (kind + '-' + path.name))
+        sources = [app_logs, Path(env['XDG_STATE_HOME']) / 'Formix/logs']
+        if kind != 'appimage':
+            sources.append(installed_root / 'logs')
+        for path in (file for folder in sources for file in folder.glob('*.log')):
+            shutil.copy2(path, logs / path.name)
             print(path.read_text(errors='replace')[-12000:], flush=True)
-        for path in Path(env['XDG_CACHE_HOME']).rglob('updater.log'):
-            shutil.copy2(path, evidence / (kind + '-' + path.parent.name + '-' + path.name))
-        for path in download.rglob('*.log'):
-            shutil.copy2(path, evidence / (kind + '-' + path.parent.name + '-' + path.name))
+        caches = [Path(env['XDG_CACHE_HOME']), download]
+        if kind != 'appimage':
+            caches.append(installed_root / 'cache')
+        for cache in caches:
+            for path in cache.rglob('updater.log'):
+                shutil.copy2(path, logs / (path.parent.name + '-' + path.name))
         package.unlink(missing_ok=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('version')
+    parser.add_argument('kind', choices=('deb', 'appimage', 'tar.gz'))
     args = parser.parse_args()
     assert os.geteuid() == 0, 'Run in the disposable CI runner with sudo'
     evidence = ROOT / 'build/linux-update-test-logs'
     evidence.mkdir(parents=True, exist_ok=True)
     dist = ROOT / 'dist'
-    deb = next(dist.glob('*.deb'))
-    appimage = next(dist.glob('*.AppImage'))
     work = ROOT / 'build/linux-packages'
     with tempfile.TemporaryDirectory(prefix='formix-ci-upgrade-') as temp:
         temp = Path(temp)
@@ -126,25 +133,40 @@ def main():
                    QT_QPA_PLATFORM='xcb', QTWEBENGINE_DISABLE_SANDBOX='1', APPIMAGE_EXTRACT_AND_RUN='1')
         Path(env['HOME']).mkdir()
         Path(env['XDG_RUNTIME_DIR']).mkdir(mode=0o700)
-        # Build an actual older package from the same payload, then upgrade its version.
-        control = work / 'deb/DEBIAN/control'
-        original = control.read_text()
-        payload_version = work / 'deb/opt/formix/release.txt'
-        original_version = payload_version.read_text()
-        olddeb = temp / 'old.deb'
-        try:
-            payload_version.write_text('0.0.0')
-            control.write_text(original.replace(f'Version: {args.version}\n', 'Version: 0.0.0\n'))
-            run('dpkg-deb', '--root-owner-group', '-Zgzip', '--build', work / 'deb', olddeb)
-        finally:
-            control.write_text(original)
-            payload_version.write_text(original_version)
-        run('apt-get', '-y', '--no-remove', 'install', olddeb, env={**env, 'DEBIAN_FRONTEND': 'noninteractive'})
-        assert subprocess.check_output(['dpkg-query', '-W', '-f=${Version}', 'formix'], text=True) == '0.0.0'
-        olddeb.unlink()
-        exercise('deb', Path('/opt/formix/Formix'), Path('/opt/formix'), deb, env, evidence, args.version)
-        assert subprocess.check_output(['dpkg-query', '-W', '-f=${Version}', 'formix'], text=True) == args.version
+        if args.kind == 'tar.gz':
+            import tarfile
+            archive = next(dist.glob('*.tar.gz'))
+            folder = temp / 'Portable Formix'
+            folder.mkdir()
+            with tarfile.open(archive) as bundle:
+                bundle.extractall(folder, filter='data')
+            installed, = folder.iterdir()
+            (installed / 'release.txt').write_text('0.0.0')
+            exercise(args.kind, installed / 'Formix', installed, archive, env, evidence, args.version)
+            return
+        if args.kind == 'deb':
+            deb = next(dist.glob('*.deb'))
+            # Build an actual older package from the same payload, then upgrade its version.
+            control = work / 'deb/DEBIAN/control'
+            original = control.read_text()
+            payload_version = work / 'deb/opt/formix/release.txt'
+            original_version = payload_version.read_text()
+            olddeb = temp / 'old.deb'
+            try:
+                payload_version.write_text('0.0.0')
+                control.write_text(original.replace(f'Version: {args.version}\n', 'Version: 0.0.0\n'))
+                run('dpkg-deb', '--root-owner-group', '-Zgzip', '--build', work / 'deb', olddeb)
+            finally:
+                control.write_text(original)
+                payload_version.write_text(original_version)
+            run('apt-get', '-y', '--no-remove', 'install', olddeb, env={**env, 'DEBIAN_FRONTEND': 'noninteractive'})
+            assert subprocess.check_output(['dpkg-query', '-W', '-f=${Version}', 'formix'], text=True) == '0.0.0'
+            olddeb.unlink()
+            exercise('deb', Path('/usr/bin/formix'), Path('/opt/formix'), deb, env, evidence, args.version)
+            assert subprocess.check_output(['dpkg-query', '-W', '-f=${Version}', 'formix'], text=True) == args.version
+            return
         # Build a real older AppImage; test replacement at a path containing spaces.
+        appimage = next(dist.glob('*.AppImage'))
         appdir = work / 'Formix.AppDir'
         release = appdir / 'usr/lib/formix/release.txt'
         current = release.read_text()
@@ -158,7 +180,7 @@ def main():
         before = digest(oldimage)
         exercise('appimage', oldimage, appdir / 'usr/lib/formix', appimage, env, evidence, args.version)
         assert digest(oldimage) == digest(appimage) and digest(oldimage) != before
-        print('Both package update integration tests passed', flush=True)
+
 
 
 if __name__ == '__main__':

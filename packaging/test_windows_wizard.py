@@ -44,11 +44,14 @@ def main(version):
     desktops = [Path(shell.SpecialFolders(k)) for k in ("AllUsersDesktop", "Desktop")]
     menus = [Path(shell.SpecialFolders(k)) for k in ("AllUsersPrograms", "Programs")]
     desktop = Desktop(backend="win32")
+    wizard_logs = Path("build/native-update-test-logs/exe/logs/wizard").resolve()
+    wizard_logs.mkdir(parents=True, exist_ok=True)
     for shortcut, launch in ((True, True), (False, False), (True, False), (False, True)):
         folder = Path(os.environ["RUNNER_TEMP"]).resolve() / f"Formix wizard {int(shortcut)}-{int(launch)}"
         assert not folder.exists()
-        log = Path("build/native-update-test-logs").resolve() / (folder.name + ".log")
-        log.parent.mkdir(parents=True, exist_ok=True)
+        shortcuts = "on" if shortcut else "off"
+        run_after_install = "on" if launch else "off"
+        log = wizard_logs / f"desktop-{shortcuts}_launch-{run_after_install}.log"
         assert not any((p / "Formix.lnk").exists() for p in desktops)
         subprocess.Popen([str(setup), "/SP-", "/LANG=en", "/NORESTART", f"/DIR={folder}", f"/LOG={log}"])
         window = desktop.window(class_name="TWizardForm", title_re=".*Formix.*")

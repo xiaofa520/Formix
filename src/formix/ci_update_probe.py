@@ -6,6 +6,46 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 
 
+def capture_settings(window, folder):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QPainter
+    from PySide6.QtTest import QTest
+
+    scroll = window.settings_scroll
+    bar = scroll.verticalScrollBar()
+    bar.setValue(0)
+    section = 1
+    while bar.value() < bar.maximum():
+        bar.setValue(min(bar.maximum(), bar.value() + max(1, scroll.viewport().height() - 60)))
+        QTest.qWait(100)
+        section += 1
+        if not window.grab().save(str(folder / f'settings-scroll-{section:02}.png')):
+            raise RuntimeError('Could not save settings screenshot')
+
+    for name, combo in [('models', window.model_combo), ('language', window.language_combo),
+                        ('acceleration', window.video_acceleration_combo)]:
+        scroll.ensureWidgetVisible(combo)
+        QTest.qWait(180)
+        QTest.mouseClick(combo, Qt.MouseButton.LeftButton)
+        QTest.qWait(200)
+        view = combo.view()
+        if not view.isVisible() or combo.count() == 0:
+            raise RuntimeError(f'{name} dropdown did not open with choices')
+        # Qt owns the popup as a separate window. Include it in the application image.
+        popup = view.window()
+        shot = window.grab()
+        painter = QPainter(shot)
+        painter.drawPixmap(window.mapFromGlobal(popup.mapToGlobal(QPoint())), popup.grab())
+        painter.end()
+        if not shot.save(str(folder / f'settings-dropdown-{name}.png')):
+            raise RuntimeError(f'Could not save {name} dropdown')
+        QTest.keyClick(view, Qt.Key.Key_Escape)
+        QTest.qWait(100)
+        if view.isVisible():
+            raise RuntimeError(f'{name} dropdown did not close')
+    bar.setValue(0)
+
+
 def attach(app, window, root, version):
     if os.environ.get('GITHUB_ACTIONS') != 'true' or not os.environ.get('FORMIX_CI_CONTROL'):
         return
@@ -37,10 +77,10 @@ def attach(app, window, root, version):
                          model_hash=hashlib.sha256(model.read_bytes()).hexdigest() if model.is_file() else None,
                          visible=window.isVisible(), exposed=window.windowHandle().isExposed())
             destination = Path(command['report'])
-            if command['phase'] == 'verify':
+            if command['phase'] == 'verify' and command.get('screenshots'):
                 from PySide6.QtTest import QTest
                 from PySide6.QtWidgets import QMessageBox
-                folder = destination.parent / (destination.stem + '-ui')
+                folder = Path(command['screenshots'])
                 folder.mkdir(exist_ok=True)
                 for index in range(window.stack.count()):
                     if index < len(window.pages):
@@ -58,9 +98,8 @@ def attach(app, window, root, version):
                     path = folder / f'{index + 1:02d}-{name}.png'
                     if window.stack.currentIndex() != index or not window.grab().save(str(path), 'PNG'):
                         raise RuntimeError(f'Could not capture page: {path}')
-            screenshot = destination.with_suffix('.png')
-            if not window.grab().save(str(screenshot), 'PNG'):
-                raise RuntimeError(f'Could not save window screenshot: {screenshot}')
+                    if index == window.settings_index:
+                        capture_settings(window, folder)
             temporary = destination.with_suffix('.tmp')
             temporary.write_text(json.dumps(state), encoding='utf-8')
             temporary.replace(destination)
@@ -70,7 +109,10 @@ def attach(app, window, root, version):
             from formix import engine_update
             asset = command.pop('download_asset')
             directory = engine_update.cache_folder('app', engine_update.SLUG, asset['version'])
-            with patch.object(engine_update, 'latest', return_value=asset):
+            release = {'tag_name': 'v' + asset['version'], 'assets': [{
+                'name': asset['name'], 'size': asset['size'], 'digest': asset['digest'],
+                'browser_download_url': asset['url']}]}
+            with patch.object(engine_update, 'latest_release', return_value=release):
                 command['update'] = engine_update.fetch(asset['version'], directory)
         if command.get('update'):
             timer.stop()
@@ -91,5 +133,6 @@ def attach(app, window, root, version):
             timer.stop()
             failure = control.with_suffix('.error')
             failure.write_text(traceback.format_exc(), encoding='utf-8')
+            app.exit(1)
     timer.timeout.connect(guarded_poll)
     timer.start()

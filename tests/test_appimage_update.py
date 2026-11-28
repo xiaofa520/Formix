@@ -14,6 +14,23 @@ from formix import engine_update
 
 
 class AppImageDownloadTests(unittest.TestCase):
+    def test_linux_install_format_selects_matching_asset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            names = [f'formix-linux-64-v9.0.0.{ext}' for ext in ('tar.gz', 'deb', 'AppImage')]
+            assets = [dict(name=name, size=1, digest='sha256:' + 'a' * 64,
+                           browser_download_url='https://example.com/' + name) for name in names]
+            release = dict(tag_name='v9.0.0', assets=assets)
+            with patch.object(engine_update, 'SLUG', 'linux-x64'), patch.object(engine_update, 'ROOT', root):
+                for kind, name in zip((None, 'deb', 'appimage'), names):
+                    with self.subTest(kind=kind):
+                        if kind:
+                            (root / 'package-format').write_text(kind)
+                        self.assertEqual(engine_update.latest(release, for_repair=True)['name'], name)
+                        missing = dict(release, assets=[a for a in assets if a['name'] != name])
+                        with self.assertRaises(ValueError):
+                            engine_update.latest(missing, for_repair=True)
+
     def test_selected_package_download_survives_extraction_cleanup(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

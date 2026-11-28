@@ -17,7 +17,7 @@ libdir.mkdir()
 environment = os.environ.copy()
 environment['LD_LIBRARY_PATH'] = f"{program}:{libdir}" + (":" + environment['LD_LIBRARY_PATH'] if environment.get('LD_LIBRARY_PATH') else "")
 # glibc and graphics drivers must match the host OS.
-host = re.compile(r"^(ld-linux|lib(c|m|pthread|dl|rt|resolv|util|anl)\.so|lib(GL|EGL|drm|gbm))")
+host = re.compile(r"^(ld-linux|lib(c|m|pthread|dl|rt|resolv|util|anl)\.so|lib(systemd|udev)\.so|lib(GL|EGL|drm|gbm))")
 for file in list(office.rglob("*")):
     if not file.is_file():
         continue

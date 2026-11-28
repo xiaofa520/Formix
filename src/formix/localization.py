@@ -1,4 +1,5 @@
 """Small, offline interface translations and system-locale selection."""
+import sys
 from PySide6.QtCore import QObject, QLocale, QSettings, Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QLineEdit, QPushButton, QWidget
 
@@ -370,7 +371,7 @@ class LanguageManager(QObject):
         super().__init__()
         self.settings = settings if settings is not None else QSettings("Formix", "Formix")
         saved = self.settings.value("interface/language", "", type=str)
-        self.code = saved if saved in LANGUAGE_CODES else system_language()
+        self.code = saved if saved in LANGUAGE_CODES else ("en" if sys.platform.startswith("linux") else system_language())
 
     def set_language(self, code):
         if code not in LANGUAGE_CODES or code == self.code:

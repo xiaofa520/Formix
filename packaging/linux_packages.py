@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
+import tempfile
 import shutil
 import subprocess
 import urllib.request
@@ -26,7 +28,12 @@ def main():
     parser.add_argument('app', type=Path)
     parser.add_argument('version')
     args = parser.parse_args()
+    from payload_integrity import verify, write as write_inventory
     app = args.app.resolve()
+    runtime = (app / 'python').resolve()
+    interpreter = (runtime / 'bin/python3').resolve(strict=True)
+    if not interpreter.is_relative_to(runtime) or not os.access(interpreter, os.X_OK):
+        raise RuntimeError(f'Invalid private Python interpreter: {interpreter}')
     arch = platform.machine()
     debarch, label = {'x86_64': ('amd64', '64'), 'aarch64': ('arm64', 'arm64')}[arch]
     root = Path(__file__).resolve().parents[1]
@@ -58,6 +65,7 @@ def main():
           f'Maintainer: xiaofa520 <xiaofa520@users.noreply.github.com>\nInstalled-Size: {size}\n'
           f'Section: utils\nPriority: optional\nDepends: {dependencies}\n'
           'Description: Formix desktop format converter\n Includes a private Python runtime and conversion engines.\n')
+    write_inventory(deb / 'opt/formix')
     output = dist / f'formix-linux-{label}-v{args.version}.deb'
     run('dpkg-deb', '--root-owner-group', '-Zxz', '--build', deb, output)
     run('dpkg-deb', '--info', output)
@@ -67,24 +75,17 @@ def main():
     write(appdir / 'formix.desktop', desktop)
     shutil.copy2(icon, appdir / 'formix.png')
     shutil.copy2(icon, appdir / '.DirIcon')
-    write(appdir / 'AppRun', '#!/bin/sh\nroot="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\n'
-          'export LD_LIBRARY_PATH="$root/usr/lib/compat${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\n'
-          'exec "$root/usr/lib/formix/Formix" "$@"\n', True)
-    # Include Qt/X11 dependencies, leaving glibc and graphics drivers to the host.
-    import re
-    compat = appdir / 'usr/lib/compat'
+    write(appdir / 'AppRun', '#!/bin/sh\nset -eu\nexec "${0%/*}/usr/lib/formix/Formix" "$@"\n', True)
+    # Only ship Qt's XCB helpers. System libraries must match the host.
+    compat = appdir / 'usr/lib/formix/qt-xcb-libs'
     compat.mkdir()
-    skip = re.compile(r'^(ld-linux|lib(c|m|pthread|dl|rt|resolv|util|anl)\.so|lib(GL|EGL|drm|gbm))')
-    qt = app / 'python/lib/python3.11/site-packages/PySide6/Qt'
-    for folder in (qt / 'lib', qt / 'plugins'):
-        for binary in folder.rglob('*.so*'):
-            if not binary.is_file():
-                continue
-            result = subprocess.run(['ldd', str(binary)], capture_output=True, text=True)
-            for name, path in re.findall(r'^\s*(\S+) => (/\S+)', result.stdout, re.M):
-                source = Path(path)
-                if not skip.match(name) and not source.resolve().is_relative_to(app) and not (compat / name).exists():
-                    shutil.copy2(source, compat / name)
+    plugin = app / 'python/lib/python3.11/site-packages/PySide6/Qt/plugins/platforms/libqxcb.so'
+    dependencies = subprocess.check_output(['ldd', str(plugin)], text=True)
+    if 'not found' in dependencies:
+        raise RuntimeError(f'Unresolved Qt platform dependency: {dependencies}')
+    for name, path in re.findall(r'^\s*(lib(?:xcb-[\w-]+|xkbcommon-x11)\.so\.\d+) => (/\S+)', dependencies, re.M):
+        shutil.copy2(path, compat / name)
+    write_inventory(appdir / 'usr/lib/formix')
     request = urllib.request.Request('https://api.github.com/repos/AppImage/appimagetool/releases/latest',
                                      headers={'User-Agent': 'Formix-build'})
     with urllib.request.urlopen(request, timeout=60) as response:
@@ -104,10 +105,19 @@ def main():
     output.chmod(0o755)
     run(output, '--appimage-extract', cwd=work)
     extracted = work / 'squashfs-root/usr/lib/formix'
-    from payload_integrity import verify
     verify(extracted)
     run(extracted / 'python/bin/python3.11', root / 'packaging/smoke.py', extracted,
         env={**environment, 'QT_QPA_PLATFORM': 'offscreen'})
+    # Portable updates accept only regular files and directories. Record the
+    # flattened layout so installed integrity checks agree with the archive.
+    with tempfile.TemporaryDirectory(dir=work) as stage:
+        portable = Path(stage) / app.name
+        run('cp', '-RL', '--link', app, portable)
+        (portable / 'payload-manifest.json').unlink()
+        write_inventory(portable)
+        archive = dist / f'formix-linux-{label}-v{args.version}.tar.gz'
+        run('tar', '--hard-dereference', '-C', stage, '-czf', archive, app.name)
+
 
 
 if __name__ == '__main__':

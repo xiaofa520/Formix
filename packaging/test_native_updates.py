@@ -39,6 +39,14 @@ def write_control(path, command):
     temporary.replace(path)
 
 
+def evidence_dirs(root, package_format):
+    logs = root / package_format / 'logs'
+    reports = root / package_format / 'reports'
+    for folder in (logs, reports):
+        folder.mkdir(parents=True, exist_ok=True)
+    return logs, reports
+
+
 def check_installed_dependencies(system, installed, evidence, phase):
     interpreter = installed / ('runtime/Formix.exe' if system == 'Windows' else 'python/bin/python3.11')
     with (evidence / (phase + '-dependencies.log')).open('w') as output:
@@ -55,9 +63,9 @@ def main():
     assert os.environ.get('GITHUB_ACTIONS') == 'true', 'Only run on disposable GitHub runners'
     system = platform.system()
     evidence = ROOT / 'build/native-update-test-logs'
-    evidence.mkdir(parents=True, exist_ok=True)
-    control = evidence / 'control.json'
-    before_path, after_path = evidence / 'before.json', evidence / 'after.json'
+    logs, reports = evidence_dirs(evidence, 'exe' if system == 'Windows' else 'pkg')
+    control = reports / 'control.json'
+    before_path, after_path = reports / 'before.json', reports / 'after.json'
     for path in (before_path, after_path, control.with_suffix('.error')):
         path.unlink(missing_ok=True)
     environment = os.environ.copy()
@@ -66,11 +74,11 @@ def main():
         package = next((ROOT / 'dist').glob('*.exe'))
         installed = Path(os.environ['RUNNER_TEMP']) / 'Formix custom installation'
         run(package, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/LANG=en',
-            '/DIR=' + str(installed), '/LOG=' + str(evidence / 'initial-install.log'))
+            '/DIR=' + str(installed), '/LOG=' + str(logs / 'initial-install.log'))
         launcher = installed / 'Formix.exe'
     elif system == 'Darwin':
         package = next((ROOT / 'dist').glob('*.pkg'))
-        with (evidence / 'initial-install.log').open('w') as output:
+        with (logs / 'initial-install.log').open('w') as output:
             run('sudo', '-n', '/usr/sbin/installer', '-pkg', package, '-target', '/', stdout=output, stderr=subprocess.STDOUT)
         installed = Path('/Applications/Formix.app/Contents/Resources')
         launcher = Path('/Applications/Formix.app/Contents/MacOS/Formix')
@@ -83,14 +91,14 @@ def main():
     missing = [str(p) for p in (launcher, installed / 'release.txt') if not p.is_file()]
     if missing:
         if system == 'Darwin':
-            with (evidence / 'install-path-diagnostics.log').open('w') as output:
+            with (logs / 'install-path-diagnostics.log').open('w') as output:
                 for command in (['pkgutil', '--pkg-info', 'org.formix.desktop'],
                                 ['pkgutil', '--files', 'org.formix.desktop'],
                                 ['find', '/Applications', str(ROOT / 'build'), '-name', 'Formix.app', '-print']):
                     subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, check=False)
-            print((evidence / 'initial-install.log').read_text(), flush=True)
+            print((logs / 'initial-install.log').read_text(), flush=True)
         raise RuntimeError('Installer returned success but required files are missing: ' + ', '.join(missing))
-    check_installed_dependencies(system, installed, evidence, 'initial')
+    check_installed_dependencies(system, installed, logs, 'initial')
     # Construct an older on-disk state using this release's real installer.
     # This tests installation/replacement, not compatibility with historical releases.
     if system == 'Darwin':
@@ -98,17 +106,17 @@ def main():
     else:
         (installed / 'release.txt').write_text('0.0.0')
     write_control(control, {'phase': 'seed', 'report': str(before_path)})
-    with (evidence / 'application.log').open('w') as output:
+    with (logs / 'application.log').open('w') as output:
         process = subprocess.Popen([str(launcher)], env=environment, stdout=output, stderr=subprocess.STDOUT)
         try:
             before = wait_report(before_path, 180, control, process)
             assert before['version'] == '0.0.0'
             assert before['setting'] == 'keep-this-setting' and before['model_hash']
-            write_control(control, {'phase': 'verify', 'report': str(after_path), 'update': str(package)})
+            write_control(control, {'phase': 'verify', 'report': str(after_path), 'screenshots': str(evidence / 'screenshots'), 'update': str(package)})
             after = wait_report(after_path, control=control, process=process)
             assert after['pid'] != before['pid'], 'Old application was not replaced and restarted'
             assert after['version'] == args.version, after
-            check_installed_dependencies(system, installed, evidence, 'updated')
+            check_installed_dependencies(system, installed, logs, 'updated')
             for key in ('root', 'setting', 'model', 'model_hash'):
                 assert before[key] == after[key], f'{key} was not preserved: {before} -> {after}'
             assert Path(after['root']).resolve() == installed.resolve(), 'Installation location changed'
@@ -122,13 +130,13 @@ def main():
                 process.terminate()
             time.sleep(3)
             for path in download.rglob('*.log'):
-                shutil.copy2(path, evidence / (path.parent.name + '-' + path.name))
+                shutil.copy2(path, logs / (path.parent.name + '-' + path.name))
             if system == 'Darwin':
                 updater_log = Path.home() / 'Library/Logs/Formix/logs/updater.log'
                 if updater_log.is_file():
-                    shutil.copy2(updater_log, evidence / 'updater.log')
+                    shutil.copy2(updater_log, logs / 'updater.log')
             output.flush()
-            print((evidence / 'application.log').read_text(errors='replace')[-12000:], flush=True)
+            print((logs / 'application.log').read_text(errors='replace')[-12000:], flush=True)
             package.unlink(missing_ok=True)
 
 
